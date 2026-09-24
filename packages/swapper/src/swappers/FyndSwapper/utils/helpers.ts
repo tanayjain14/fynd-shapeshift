@@ -1,21 +1,17 @@
 import type { AssetId, ChainId } from '@shapeshiftoss/caip'
 import { fromAssetId } from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
-import { bn } from '@shapeshiftoss/utils'
+import { bn, chainIdToFeeAssetId } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 import type { Address } from 'viem'
-import { getAddress, zeroAddress } from 'viem'
+import { getAddress, isAddress, zeroAddress } from 'viem'
 
 import type { SwapErrorRight } from '../../../types'
 import { TradeQuoteError } from '../../../types'
-import { getInputOutputRate, makeSwapErrorRight } from '../../../utils'
+import { makeSwapErrorRight } from '../../../utils'
 import type { FyndSupportedChainId } from './constants'
-import {
-  FYND_NATIVE_ASSET_ADDRESS,
-  FYND_ROUTER_FEE_DIVISOR,
-  FYND_SUPPORTED_CHAIN_IDS,
-} from './constants'
+import { FYND_SUPPORTED_CHAIN_IDS } from './constants'
 
 export const isFyndSupportedChainId = (chainId: ChainId): chainId is FyndSupportedChainId =>
   FYND_SUPPORTED_CHAIN_IDS.includes(chainId as FyndSupportedChainId)
@@ -27,19 +23,21 @@ export type FyndAmounts = {
 
 export const convertAssetIdToFyndToken = (assetId: AssetId): Address => {
   const { assetNamespace, assetReference } = fromAssetId(assetId)
-  if (assetNamespace === 'slip44') return FYND_NATIVE_ASSET_ADDRESS
+  if (assetNamespace === 'slip44') return zeroAddress
   return getAddress(assetReference)
 }
 
 export const assertValidTrade = ({
   sellAsset,
   buyAsset,
+  chainId,
 }: {
   sellAsset: Asset
   buyAsset: Asset
-}): Result<boolean, SwapErrorRight> => {
+  chainId?: ChainId
+}): Result<FyndSupportedChainId, SwapErrorRight> => {
   if (!isFyndSupportedChainId(sellAsset.chainId) || !isFyndSupportedChainId(buyAsset.chainId)) {
-    return Err(
+    return Err<FyndSupportedChainId, SwapErrorRight>(
       makeSwapErrorRight({
         message: 'Fynd only supports configured EVM chains',
         code: TradeQuoteError.UnsupportedChain,
@@ -48,7 +46,7 @@ export const assertValidTrade = ({
   }
 
   if (sellAsset.chainId !== buyAsset.chainId) {
-    return Err(
+    return Err<FyndSupportedChainId, SwapErrorRight>(
       makeSwapErrorRight({
         message: 'Fynd does not support cross-chain trades',
         code: TradeQuoteError.CrossChainNotSupported,
@@ -56,11 +54,28 @@ export const assertValidTrade = ({
     )
   }
 
-  return Ok(true)
+  const validAssets = [sellAsset, buyAsset].every(asset => {
+    const assetParts = asset.assetId.split('/')
+    const [assetChainId, assetReference] = assetParts
+    return (
+      assetParts.length === 2 &&
+      assetChainId === asset.chainId &&
+      (asset.assetId === chainIdToFeeAssetId(asset.chainId) ||
+        (assetReference?.startsWith('erc20:') &&
+          isAddress(assetReference.slice(6)) &&
+          assetReference.slice(6).toLowerCase() !== zeroAddress))
+    )
+  })
+  if (!validAssets || (chainId !== undefined && chainId !== sellAsset.chainId)) {
+    return Err<FyndSupportedChainId, SwapErrorRight>(
+      makeSwapErrorRight({
+        message: 'Invalid Fynd assets or chain',
+        code: TradeQuoteError.UnsupportedChain,
+      }),
+    )
+  }
+  return Ok<FyndSupportedChainId, SwapErrorRight>(sellAsset.chainId)
 }
-
-export const calculateFyndRouterFee = (amountOut: string): string =>
-  bn(amountOut).div(FYND_ROUTER_FEE_DIVISOR).integerValue().toFixed()
 
 export const calculateFyndAmounts = ({
   amountOut,
@@ -74,24 +89,6 @@ export const calculateFyndAmounts = ({
   buyAmountBeforeFeesCryptoBaseUnit: amountOut,
   buyAmountAfterFeesCryptoBaseUnit: bn(amountOut).minus(routerFee).minus(clientFee).toFixed(),
 })
-
-export const calculateFyndRate = ({
-  sellAmount,
-  buyAmount,
-  sellAsset,
-  buyAsset,
-}: {
-  sellAmount: string
-  buyAmount: string
-  sellAsset: Asset
-  buyAsset: Asset
-}): string =>
-  getInputOutputRate({
-    sellAmountCryptoBaseUnit: sellAmount,
-    buyAmountCryptoBaseUnit: buyAmount,
-    sellAsset,
-    buyAsset,
-  })
 
 export const isNativeFyndSell = (assetId: AssetId): boolean =>
   convertAssetIdToFyndToken(assetId) === zeroAddress

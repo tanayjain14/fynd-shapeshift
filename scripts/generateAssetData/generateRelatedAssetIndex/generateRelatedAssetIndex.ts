@@ -6,6 +6,7 @@ import {
   baseAssetId,
   blastAssetId,
   bobAssetId,
+  bscAssetId,
   cronosAssetId,
   ethAssetId,
   FEE_ASSET_IDS,
@@ -19,6 +20,7 @@ import {
   megaethAssetId,
   modeAssetId,
   optimismAssetId,
+  robinhoodAssetId,
   scrollAssetId,
   soneiumAssetId,
   sonicAssetId,
@@ -79,6 +81,7 @@ const manualRelatedAssetIndex: Record<AssetId, AssetId[]> = {
     modeAssetId,
     soneiumAssetId,
     abstractAssetId,
+    robinhoodAssetId,
   ],
   [foxAssetId]: [foxOnArbitrumOneAssetId],
   [starknetAssetId]: [
@@ -87,6 +90,7 @@ const manualRelatedAssetIndex: Record<AssetId, AssetId[]> = {
   ],
   [sonicAssetId]: ['eip155:1/erc20:0x4e15361fd6b4bb609fa63c81a2be19d873717870'],
   [cronosAssetId]: ['eip155:1/erc20:0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b'],
+  [bscAssetId]: ['eip155:1/erc20:0xb8c77482e45f1f44de1745f52c74426c631bdd52'],
   'eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': [
     'eip155:146/erc20:0x29219dd400f2bf60e5a23d13be72b486d4038894',
   ],
@@ -237,7 +241,9 @@ const getCoingeckoRelatedAssetIds = async (
   const { chainId, assetReference: contractAddress } = fromAssetId(assetId)
   const coingeckoChain = adapters.chainIdToCoingeckoAssetPlatform(chainId)
   const coinUri = `${coingeckoChain}/contract/${contractAddress}?vs_currency=usd`
-  const { data } = await axios.get<CoingeckoAssetDetails>(`${coingeckoBaseUrl}/coins/${coinUri}`)
+  const { data } = await axiosInstance.get<CoingeckoAssetDetails>(
+    `${coingeckoBaseUrl}/coins/${coinUri}`,
+  )
 
   const platforms = data.platforms
   const coinId = data.id
@@ -313,8 +319,26 @@ const processRelatedAssetIds = async (
 ): Promise<void> => {
   const existingRelatedAssetKey = assetData[assetId].relatedAssetKey
 
+  // An asset can carry a key the index no longer lists - e.g. it left the dataset and came back
   if (!REGEN_ALL && existingRelatedAssetKey) {
-    return
+    const group = relatedAssetIndex[existingRelatedAssetKey] ?? []
+
+    const rejoinedGroup = Array.from(new Set([...group, existingRelatedAssetKey, assetId]))
+
+    // A group of one is not a group
+    if (rejoinedGroup.length > 1) {
+      relatedAssetIndex[existingRelatedAssetKey] = rejoinedGroup
+
+      // Only fill a missing key - repointing would steal the asset from another group
+      for (const relatedAssetId of rejoinedGroup) {
+        const relatedAsset = assetData[relatedAssetId]
+        if (relatedAsset && !relatedAsset.relatedAssetKey) {
+          relatedAsset.relatedAssetKey = existingRelatedAssetKey
+        }
+      }
+
+      return
+    }
   }
 
   // Check if this asset is already in the relatedAssetIndex
@@ -396,11 +420,13 @@ const processRelatedAssetIds = async (
   const zerionRelatedAssetIds = zerionRelatedAssetsResult?.relatedAssetIds ?? []
   const coingeckoRelatedAssetIds = coingeckoRelatedAssetsResult?.relatedAssetIds ?? []
 
+  // Providers report related assets exclusive of the primary, so add it back
   const mergedRelatedAssetIds = Array.from(
     new Set([
       ...manualRelatedAssetIds,
       ...zerionRelatedAssetIds,
       ...coingeckoRelatedAssetIds,
+      relatedAssetKey,
       assetId,
     ]),
   )
@@ -499,6 +525,19 @@ export const generateRelatedAssetIndex = async () => {
     relatedAssetIndex[relatedAssetKey] = relatedAssetIds.filter(
       assetId => generatedAssetData[assetId] !== undefined,
     )
+  })
+
+  // b) the group has fewer than two members left
+  Object.entries(relatedAssetIndex).forEach(([relatedAssetKey, relatedAssetIds]) => {
+    if (relatedAssetIds.length > 1) return
+
+    delete relatedAssetIndex[relatedAssetKey]
+
+    // Only clear a key pointing at the group we just deleted - the asset may have rejoined another
+    for (const assetId of [relatedAssetKey, ...relatedAssetIds]) {
+      const asset = generatedAssetData[assetId]
+      if (asset?.relatedAssetKey === relatedAssetKey) delete asset.relatedAssetKey
+    }
   })
 
   const categoryToCoinIds = await fetchBridgedCategoryMappings()

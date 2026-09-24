@@ -9,13 +9,12 @@ import {
   toAssetId,
   tronChainId,
 } from '@shapeshiftoss/caip'
-import { isEvmChainId } from '@shapeshiftoss/chain-adapters'
+import { isEvmChainId, tron } from '@shapeshiftoss/chain-adapters'
 
 import {
   DEFAULT_RELAY_EVM_TOKEN_ADDRESS,
   RELAY_BTC_TOKEN_ADDRESS,
   RELAY_SOLANA_TOKEN_ADDRESS,
-  RELAY_TRON_TOKEN_ADDRESS,
   relayChainIdToChainId,
 } from '../constant'
 import type { RelayToken } from './types'
@@ -38,7 +37,7 @@ export const relayTokenToAssetId = (relayToken: RelayToken): AssetId => {
     }
 
     if (chainId === tronChainId) {
-      return relayToken.address === RELAY_TRON_TOKEN_ADDRESS
+      return relayToken.address === tron.TRON_ZERO_ADDRESS
     }
 
     return false
@@ -256,7 +255,11 @@ export const relayTokenToAssetId = (relayToken: RelayToken): AssetId => {
           assetReference: ASSET_REFERENCE.Abstract,
           assetNamespace: ASSET_NAMESPACE.slip44,
         }
-
+      case CHAIN_REFERENCE.RobinhoodMainnet:
+        return {
+          assetReference: ASSET_REFERENCE.Robinhood,
+          assetNamespace: ASSET_NAMESPACE.slip44,
+        }
       default:
         throw Error(`chainId '${relayToken.chainId}' not supported`)
     }

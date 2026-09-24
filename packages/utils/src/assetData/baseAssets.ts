@@ -2,6 +2,23 @@ import type { AssetId } from '@shapeshiftoss/caip'
 import * as caip from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
 
+export const robinhood: Readonly<Asset> = Object.freeze({
+  assetId: caip.robinhoodAssetId,
+  chainId: caip.robinhoodChainId,
+  name: 'Ethereum',
+  networkName: 'Robinhood',
+  symbol: 'ETH',
+  precision: 18,
+  color: '#00C805',
+  networkColor: '#00C805',
+  icon: 'https://rawcdn.githack.com/trustwallet/assets/32e51d582a890b3dd3135fe3ee7c20c2fd699a6d/blockchains/ethereum/info/logo.png',
+  networkIcon: 'https://assets.relay.link/icons/4663/light.png',
+  explorer: 'https://robinhoodchain.blockscout.com',
+  explorerAddressLink: 'https://robinhoodchain.blockscout.com/address/',
+  explorerTxLink: 'https://robinhoodchain.blockscout.com/tx/',
+  relatedAssetKey: 'eip155:1/slip44:60',
+})
+
 export const abstract: Readonly<Asset> = Object.freeze({
   assetId: caip.abstractAssetId,
   chainId: caip.abstractChainId,
@@ -11,7 +28,7 @@ export const abstract: Readonly<Asset> = Object.freeze({
   precision: 18,
   color: '#00D4AA',
   networkColor: '#00D4AA',
-  icon: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
+  icon: 'https://rawcdn.githack.com/trustwallet/assets/32e51d582a890b3dd3135fe3ee7c20c2fd699a6d/blockchains/ethereum/info/logo.png',
   networkIcon: 'https://assets.relay.link/icons/2741/light.png',
   explorer: 'https://abscan.org',
   explorerAddressLink: 'https://abscan.org/address/',

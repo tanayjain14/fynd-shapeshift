@@ -37,6 +37,7 @@ import { csp as optimism } from './chains/optimism'
 import { csp as plasma } from './chains/plasma'
 import { csp as plume } from './chains/plume'
 import { csp as polygon } from './chains/polygon'
+import { csp as robinhood } from './chains/robinhood'
 import { csp as scroll } from './chains/scroll'
 import { csp as sei } from './chains/sei'
 import { csp as solana } from './chains/solana'
@@ -65,7 +66,6 @@ import { csp as bebop } from './defi/swappers/Bebop'
 import { csp as bobGateway } from './defi/swappers/BobGateway'
 import { csp as butterSwap } from './defi/swappers/ButterSwap'
 import { csp as cowSwap } from './defi/swappers/CowSwap'
-import { csp as fynd } from './defi/swappers/Fynd'
 import { csp as nearIntents } from './defi/swappers/NearIntents'
 import { csp as oneInch } from './defi/swappers/OneInch'
 import { csp as portals } from './defi/swappers/Portals'
@@ -85,7 +85,6 @@ import { csp as mercle } from './mercle'
 import { csp as mixPanel } from './mixPanel'
 import { csp as moralis } from './moralis'
 import { csp as pinata } from './pinata'
-import { csp as foxPage } from './plugins/foxPage'
 import { csp as walletConnectToDapps } from './plugins/walletConnectToDapps'
 import { csp as railway } from './railway'
 import { csp as relay } from './relay'
@@ -100,7 +99,6 @@ import { csp as gridplus } from './wallets/gridplus'
 import { csp as keepkey } from './wallets/keepkey'
 import { csp as metamask } from './wallets/metamask'
 import { csp as walletConnect } from './wallets/walletConnect'
-import { csp as walletMigration } from './wallets/walletMigration'
 import { csp as webflow } from './webflow'
 import { csp as yieldxyz } from './yieldxyz'
 
@@ -189,7 +187,6 @@ export const csps = [
   bobGateway,
   bebop,
   cowSwap,
-  fynd,
   nearIntents,
   oneInch,
   portals,
@@ -197,17 +194,16 @@ export const csps = [
   sunio,
   thor,
   butterSwap,
-  foxPage,
   walletConnectToDapps,
   coinbase,
   gridplus,
   keepkey,
   metamask,
   walletConnect,
-  walletMigration,
   relay,
   debridge,
   railway,
   discord,
   yieldxyz,
+  robinhood,
 ]

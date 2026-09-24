@@ -25,14 +25,40 @@ import {
   DAO_TREASURY_ETHEREUM_MAINNET,
   DAO_TREASURY_GNOSIS,
   DAO_TREASURY_HYPEREVM,
+  DAO_TREASURY_MEGAETH,
   DAO_TREASURY_MONAD,
   DAO_TREASURY_OPTIMISM,
+  DAO_TREASURY_PLASMA,
   DAO_TREASURY_POLYGON,
+  DAO_TREASURY_ROBINHOOD,
   DAO_TREASURY_SOLANA,
   DAO_TREASURY_STARKNET,
   DAO_TREASURY_TON,
   isTreasuryChainId,
 } from '@shapeshiftoss/utils'
+
+import type { TradeAmount, TradeStepCommon } from '../types'
+import { SwapperName } from '../types'
+
+// Deadline for providers without their own expiry - short enough to keep priced amounts honest
+export const FALLBACK_QUOTE_DEADLINE_MS = 60_000
+
+export const getTradeAmount = (
+  input:
+    | { sellAmountIncludingProtocolFeesCryptoBaseUnit: string }
+    | { buyAmountCryptoBaseUnit: string },
+): TradeAmount =>
+  'buyAmountCryptoBaseUnit' in input
+    ? { direction: 'exactOut', cryptoBaseUnit: input.buyAmountCryptoBaseUnit }
+    : { direction: 'exactIn', cryptoBaseUnit: input.sellAmountIncludingProtocolFeesCryptoBaseUnit }
+
+// Bands are unambiguous for any realistic date: unix s land ~2e9, ms ~2e12, µs ~2e15, ns ~2e18
+export const normalizeEpochToMs = (value: number): number => {
+  if (value < 1e12) return value * 1000
+  if (value < 1e15) return value
+  if (value < 1e18) return Math.floor(value / 1000)
+  return Math.floor(value / 1e6)
+}
 
 export const isNativeEvmAsset = (assetId: AssetId): boolean => {
   const { chainId } = fromAssetId(assetId)
@@ -80,6 +106,9 @@ const DAO_TREASURY_BY_CHAIN_ID: Record<TreasuryChainId, string> = {
   [KnownChainIds.MonadMainnet]: DAO_TREASURY_MONAD,
   [KnownChainIds.HyperEvmMainnet]: DAO_TREASURY_HYPEREVM,
   [KnownChainIds.BobMainnet]: DAO_TREASURY_BOB,
+  [KnownChainIds.RobinhoodMainnet]: DAO_TREASURY_ROBINHOOD,
+  [KnownChainIds.PlasmaMainnet]: DAO_TREASURY_PLASMA,
+  [KnownChainIds.MegaEthMainnet]: DAO_TREASURY_MEGAETH,
 }
 
 export const getTreasuryAddressFromChainId = (chainId: ChainId): string => {
@@ -90,4 +119,26 @@ export const getTreasuryAddressFromChainId = (chainId: ChainId): string => {
   if (!treasuryAddress)
     throw new Error(`[getTreasuryAddressFromChainId] - Unsupported chainId: ${chainId}`)
   return treasuryAddress
+}
+
+export type DepositAddressStep = Pick<TradeStepCommon, 'chainflipSpecific' | 'swapperMetadata'>
+
+export const getDepositAddress = (
+  step: DepositAddressStep,
+  swapperName: SwapperName,
+): string | undefined => {
+  switch (swapperName) {
+    case SwapperName.Chainflip:
+      return step.chainflipSpecific?.depositAddress || undefined
+    case SwapperName.NearIntents: {
+      if (step.swapperMetadata?.name !== 'nearIntents') return
+
+      const { depositAddress, depositMemo } = step.swapperMetadata
+      if (depositMemo) return
+
+      return depositAddress || undefined
+    }
+    default:
+      return
+  }
 }

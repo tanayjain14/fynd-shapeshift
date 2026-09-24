@@ -22,7 +22,7 @@ import type {
 import { SwapperName, TradeQuoteError } from '../../../types'
 import { getInputOutputRate, makeSwapErrorRight } from '../../../utils'
 import { buildAffiliateFee } from '../../../utils/affiliateFee'
-import { getTreasuryAddressFromChainId } from '../../../utils/helpers'
+import { getTreasuryAddressFromChainId, normalizeEpochToMs } from '../../../utils/helpers'
 import { acrossChainIdToChainId, acrossErrorCodeToTradeQuoteError } from '../constant'
 import { fetchAcrossTrade } from './fetchAcrossTrade'
 import type { GetAcrossStepDataArgs } from './getAcrossStepData'
@@ -35,6 +35,7 @@ type AcrossTradeContext = {
   stepCommon: Omit<TradeStepCommon, 'feeData'>
   protocolFees: QuoteFeeData['protocolFees']
   stepDataArgs: Omit<GetAcrossStepDataArgs, 'type' | 'input'>
+  deadline: number
 }
 
 export const getAcrossTradeContext = async ({
@@ -241,10 +242,12 @@ export const getAcrossTradeContext = async ({
     stepDataArgs: {
       swapTx: quote.swapTx,
       sellAsset,
+      sellAmountCryptoBaseUnit: sellAmountIncludingProtocolFeesCryptoBaseUnit,
       from: depositor,
       spenderAddress: allowanceContract,
       fallbackNetworkFeeCryptoBaseUnit: quote.fees.originGas.amount,
       deps,
     },
+    deadline: normalizeEpochToMs(quote.quoteExpiryTimestamp),
   })
 }

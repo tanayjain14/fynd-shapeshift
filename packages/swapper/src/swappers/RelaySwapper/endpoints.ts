@@ -8,12 +8,19 @@ import { getUnsignedSolanaTransaction } from '../../utils/solana/getUnsignedSola
 import { getTronTransactionFees, getUnsignedTronTransaction } from '../../utils/tron'
 import { getUnsignedUtxoTransaction, getUtxoTransactionFees } from '../../utils/utxo'
 import { chainIdToRelayChainId } from './constant'
-import { getTradeQuote } from './getTradeQuote/getTradeQuote'
-import { getTradeRate } from './getTradeRate/getTradeRate'
+import { getExactOutputTradeQuote, getTradeQuote } from './getTradeQuote/getTradeQuote'
+import { getExactOutputTradeRate, getTradeRate } from './getTradeRate/getTradeRate'
 import { getLatestRelayStatusMessage } from './utils/getLatestRelayStatusMessage'
 import { notifyTransactionIndexing } from './utils/notifyTransactionIndexing'
-import { relayService } from './utils/relayService'
-import type { RelayStatus, RelayTradeQuoteInput, RelayTradeRateInput } from './utils/types'
+import { getRelayRequestConfig, relayService } from './utils/relayService'
+import { getRelayTrackingLink, relayStatusToTxStatus } from './utils/relayStatus'
+import type {
+  RelayExactOutputTradeQuoteInput,
+  RelayExactOutputTradeRateInput,
+  RelayStatus,
+  RelayTradeQuoteInput,
+  RelayTradeRateInput,
+} from './utils/types'
 
 // Keep track of the trades we already notified the relay indexer about
 const txIndexingMap: Map<string, boolean> = new Map()
@@ -24,6 +31,20 @@ export const relayApi: SwapperApi = {
   },
   getTradeRate: (input, deps) => {
     return getTradeRate(input as RelayTradeRateInput, deps, chainIdToRelayChainId)
+  },
+  getExactOutputTradeQuote: (input, deps) => {
+    return getExactOutputTradeQuote(
+      input as RelayExactOutputTradeQuoteInput,
+      deps,
+      chainIdToRelayChainId,
+    )
+  },
+  getExactOutputTradeRate: (input, deps) => {
+    return getExactOutputTradeRate(
+      input as RelayExactOutputTradeRateInput,
+      deps,
+      chainIdToRelayChainId,
+    )
   },
   getEvmTransactionFees,
   getUnsignedEvmTransaction,
@@ -83,10 +104,11 @@ export const relayApi: SwapperApi = {
 
     // relay.link tracks the swap by its origin chain transaction
     const swapperTxId = txHash
-    const swapperTxLink = `https://relay.link/transaction/${txHash}`
+    const swapperTxLink = getRelayTrackingLink(txHash)
 
     const maybeStatusResponse = await relayService.get<RelayStatus>(
-      `${config.VITE_RELAY_API_URL}/intents/status/v2?requestId=${relayMetadata.relayId}`,
+      `${config.VITE_RELAY_API_URL}/intents/status/v3?requestId=${relayMetadata.relayId}`,
+      getRelayRequestConfig(config),
     )
 
     if (maybeStatusResponse.isErr()) {
@@ -101,19 +123,7 @@ export const relayApi: SwapperApi = {
 
     const { data: statusResponse } = maybeStatusResponse.unwrap()
 
-    const status = (() => {
-      switch (statusResponse.status) {
-        case 'success':
-          return TxStatus.Confirmed
-        case 'pending':
-          return TxStatus.Pending
-        case 'failed':
-        case 'refund':
-          return TxStatus.Failed
-        default:
-          return TxStatus.Unknown
-      }
-    })()
+    const status = relayStatusToTxStatus(statusResponse.status)
 
     // Relay refers to in Txs as "inTxHashes" but to out Txs as simply "txHashes" when they really mean "outTxHashes"
     // One thing to note is that for same-chain Txs, there is no "out Tx" per se since the in Tx *is* the out Tx

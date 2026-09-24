@@ -1,141 +1,117 @@
+import { fromChainId } from '@shapeshiftoss/caip'
 import { bn } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
-import { isAddress, isHex } from 'viem'
+import { isAddress } from 'viem'
 
 import type { SwapErrorRight } from '../../../types'
 import { TradeQuoteError } from '../../../types'
 import { makeSwapErrorRight } from '../../../utils'
-import type {
-  FyndFeeBreakdown,
-  FyndInfoResponse,
-  FyndOrderQuote,
-  FyndQuoteResponse,
-} from '../types'
-
-const FYND_ETHEREUM_CHAIN_ID = 1
-const FYND_QUOTE_STATUSES = new Set<FyndOrderQuote['status']>([
-  'success',
-  'no_route_found',
-  'insufficient_liquidity',
-  'timeout',
-  'not_ready',
-  'price_check_failed',
-])
+import type { FyndEncodedQuote, FyndFeeBreakdown, FyndInfoResponse } from '../types'
+import type { FyndSupportedChainId } from './constants'
+import { FYND_CHAINS } from './constants'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
-const isUnknownArray = (value: unknown): value is unknown[] => Array.isArray(value)
+const MAX_UINT256 = (2n ** 256n - 1n).toString()
+export const isFyndAmount = (value: unknown): value is string =>
+  typeof value === 'string' && /^\d{1,78}$/.test(value) && bn(value).lte(MAX_UINT256)
 
-const isNonNegativeNumericString = (value: unknown): value is string =>
-  typeof value === 'string' && /^\d+$/.test(value) && bn(value).isFinite() && bn(value).gte(0)
-
-const makeInvalidResponseError = (message: string): SwapErrorRight =>
+const invalidResponse = (message: string): SwapErrorRight =>
   makeSwapErrorRight({ message, code: TradeQuoteError.InvalidResponse })
-
-const isValidTransaction = (value: unknown): boolean =>
-  isRecord(value) &&
-  typeof value.to === 'string' &&
-  isAddress(value.to) &&
-  typeof value.data === 'string' &&
-  isHex(value.data) &&
-  isNonNegativeNumericString(value.value) &&
-  (value.client_fee_signature_offset === null ||
-    (typeof value.client_fee_signature_offset === 'number' &&
-      Number.isInteger(value.client_fee_signature_offset) &&
-      value.client_fee_signature_offset >= 0))
 
 const isValidFeeBreakdown = (value: unknown): value is FyndFeeBreakdown =>
   isRecord(value) &&
-  isNonNegativeNumericString(value.router_fee) &&
-  isNonNegativeNumericString(value.client_fee) &&
-  isNonNegativeNumericString(value.max_slippage) &&
-  isNonNegativeNumericString(value.min_amount_received) &&
-  (value.swaps_hash === null || typeof value.swaps_hash === 'string')
-
-const isValidRoute = (value: unknown): boolean =>
-  value === null ||
-  (isRecord(value) &&
-    isUnknownArray(value.swaps) &&
-    value.swaps.every(
-      (swap: unknown) =>
-        isRecord(swap) && typeof swap.protocol === 'string' && swap.protocol.length > 0,
-    ))
-
-const isValidOrder = (value: unknown, quoteOrRate: 'quote' | 'rate'): value is FyndOrderQuote => {
-  if (!isRecord(value)) return false
-  if (
-    typeof value.status !== 'string' ||
-    !FYND_QUOTE_STATUSES.has(value.status as FyndOrderQuote['status'])
-  ) {
-    return false
-  }
-  if (
-    typeof value.order_id !== 'string' ||
-    !isNonNegativeNumericString(value.amount_in) ||
-    !isNonNegativeNumericString(value.amount_out) ||
-    !isNonNegativeNumericString(value.amount_out_net_gas) ||
-    !isNonNegativeNumericString(value.gas_estimate) ||
-    !isNonNegativeNumericString(value.gas_price)
-  ) {
-    return false
-  }
-  if (
-    !isValidRoute(value.route) ||
-    (value.price_impact_bps !== null &&
-      (typeof value.price_impact_bps !== 'number' ||
-        !Number.isFinite(value.price_impact_bps) ||
-        value.price_impact_bps < 0))
-  ) {
-    return false
-  }
-  if (quoteOrRate === 'quote' && value.status === 'success') {
-    if (!isValidTransaction(value.transaction) || !isValidFeeBreakdown(value.fee_breakdown)) {
-      return false
-    }
-
-    const totalFees = bn(value.fee_breakdown.router_fee).plus(value.fee_breakdown.client_fee)
-    return totalFees.lte(value.amount_out)
-  }
-  return true
-}
+  isFyndAmount(value.router_fee) &&
+  isFyndAmount(value.client_fee) &&
+  isFyndAmount(value.max_slippage) &&
+  isFyndAmount(value.min_amount_received)
 
 export const validateFyndInfoResponse = (
   value: unknown,
-): Result<FyndInfoResponse & { router_address: `0x${string}` }, SwapErrorRight> => {
+  chainId: FyndSupportedChainId,
+): Result<FyndInfoResponse, SwapErrorRight> => {
   if (
     !isRecord(value) ||
-    value.chain_id !== FYND_ETHEREUM_CHAIN_ID ||
+    value.chain_id !== Number(fromChainId(chainId).chainReference) ||
     typeof value.router_address !== 'string' ||
     !isAddress(value.router_address) ||
-    (value.permit2_address !== null &&
-      (typeof value.permit2_address !== 'string' || !isAddress(value.permit2_address))) ||
-    typeof value.version !== 'string'
+    value.router_address.toLowerCase() !== FYND_CHAINS[chainId].routerAddress
   ) {
-    return Err(makeInvalidResponseError('Fynd returned invalid Ethereum router information'))
+    return Err(invalidResponse('Fynd returned unexpected chain or router information'))
   }
-  return Ok(value as FyndInfoResponse & { router_address: `0x${string}` })
+  return Ok(value as FyndInfoResponse)
 }
 
 export const validateFyndQuoteResponse = (
   value: unknown,
-  quoteOrRate: 'quote' | 'rate',
-): Result<
-  FyndQuoteResponse & { orders: [FyndOrderQuote, ...FyndOrderQuote[]] },
-  SwapErrorRight
-> => {
-  if (
-    !isRecord(value) ||
-    !isUnknownArray(value.orders) ||
-    value.orders.length === 0 ||
-    !value.orders.every((order: unknown) => isValidOrder(order, quoteOrRate)) ||
-    typeof value.solve_time_ms !== 'number' ||
-    !Number.isFinite(value.solve_time_ms) ||
-    value.solve_time_ms < 0 ||
-    !isNonNegativeNumericString(value.total_gas_estimate)
-  ) {
-    return Err(makeInvalidResponseError('Fynd returned an invalid quote response'))
+  {
+    chainId,
+    sellAmountCryptoBaseUnit,
+    isNativeSell,
+  }: {
+    chainId: FyndSupportedChainId
+    sellAmountCryptoBaseUnit: string
+    isNativeSell: boolean
+  },
+): Result<FyndEncodedQuote, SwapErrorRight> => {
+  if (!isRecord(value) || !Array.isArray(value.orders) || value.orders.length !== 1) {
+    return Err(invalidResponse('Fynd must return exactly one order'))
   }
-  return Ok(value as FyndQuoteResponse & { orders: [FyndOrderQuote, ...FyndOrderQuote[]] })
+  const quote: unknown = value.orders[0]
+  if (!isRecord(quote)) return Err(invalidResponse('Fynd returned an invalid order'))
+  if (quote.status !== 'success') {
+    const code =
+      quote.status === 'no_route_found' || quote.status === 'insufficient_liquidity'
+        ? TradeQuoteError.NoRouteFound
+        : TradeQuoteError.QueryFailed
+    return Err(
+      makeSwapErrorRight({
+        message: `Fynd quote failed: ${String(quote.status)}`,
+        code,
+      }),
+    )
+  }
+  const { transaction, fee_breakdown: fees } = quote
+  if (
+    !isFyndAmount(quote.amount_in) ||
+    !bn(quote.amount_in).eq(sellAmountCryptoBaseUnit) ||
+    !isFyndAmount(quote.amount_out) ||
+    !bn(quote.amount_out).gt(0) ||
+    !isFyndAmount(quote.gas_estimate) ||
+    !bn(quote.gas_estimate).gt(0) ||
+    (quote.gas_price !== null && quote.gas_price !== undefined && !isFyndAmount(quote.gas_price)) ||
+    (quote.price_impact_bps !== null &&
+      quote.price_impact_bps !== undefined &&
+      (typeof quote.price_impact_bps !== 'number' ||
+        !Number.isSafeInteger(quote.price_impact_bps))) ||
+    !isValidFeeBreakdown(fees) ||
+    !bn(fees.client_fee).isZero() ||
+    !bn(fees.min_amount_received).gt(0) ||
+    !bn(fees.router_fee)
+      .plus(fees.client_fee)
+      .plus(fees.max_slippage)
+      .plus(fees.min_amount_received)
+      .eq(quote.amount_out) ||
+    !isRecord(transaction) ||
+    typeof transaction.to !== 'string' ||
+    transaction.to.toLowerCase() !== FYND_CHAINS[chainId].routerAddress ||
+    typeof transaction.data !== 'string' ||
+    !/^0x(?:[a-fA-F0-9]{2}){4,}$/.test(transaction.data) ||
+    !isFyndAmount(transaction.value) ||
+    !bn(transaction.value).eq(isNativeSell ? sellAmountCryptoBaseUnit : '0') ||
+    (transaction.client_fee_signature_offset !== null &&
+      transaction.client_fee_signature_offset !== undefined) ||
+    (quote.route !== null &&
+      quote.route !== undefined &&
+      (!isRecord(quote.route) ||
+        !Array.isArray(quote.route.swaps) ||
+        !quote.route.swaps.every(
+          (swap: unknown) => isRecord(swap) && typeof swap.protocol === 'string',
+        )))
+  ) {
+    return Err(invalidResponse('Fynd returned an invalid encoded quote'))
+  }
+  return Ok(quote as FyndEncodedQuote)
 }

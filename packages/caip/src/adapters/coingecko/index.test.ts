@@ -137,12 +137,25 @@ describe('adapters:coingecko', () => {
         assetNamespace: 'slip44',
         assetReference: ASSET_REFERENCE.Soneium,
       })
+      const ethOnRobinhood = toAssetId({
+        chainNamespace,
+        chainReference: CHAIN_REFERENCE.RobinhoodMainnet,
+        assetNamespace: 'slip44',
+        assetReference: ASSET_REFERENCE.Robinhood,
+      })
+      const ethOnKatana = toAssetId({
+        chainNamespace,
+        chainReference: CHAIN_REFERENCE.KatanaMainnet,
+        assetNamespace: 'slip44',
+        assetReference: ASSET_REFERENCE.Katana,
+      })
       expect(coingeckoToAssetIds('ethereum')).toEqual([
         ethOnEthereum,
         ethOnOptimism,
         ethOnArbitrum,
         ethOnBase,
         ethOnBob,
+        ethOnKatana,
         ethOnZkSyncEra,
         ethOnBlast,
         ethOnWorldChain,
@@ -155,6 +168,7 @@ describe('adapters:coingecko', () => {
         ethOnUnichain,
         ethOnSoneium,
         ethOnAbstract,
+        ethOnRobinhood,
       ])
     })
 
@@ -280,6 +294,12 @@ describe('adapters:coingecko', () => {
         assetNamespace: 'erc20',
         assetReference: '0xb88339cb7199b77e23db6e890353e22632ba630f',
       })
+      const usdcOnPlasma = toAssetId({
+        chainNamespace: CHAIN_NAMESPACE.Evm,
+        chainReference: CHAIN_REFERENCE.PlasmaMainnet,
+        assetNamespace: 'erc20',
+        assetReference: '0x2d661c89d812261039af9764eceaaee884f5f67f',
+      })
       const usdcOnPlume = toAssetId({
         chainNamespace: CHAIN_NAMESPACE.Evm,
         chainReference: CHAIN_REFERENCE.PlumeMainnet,
@@ -355,6 +375,7 @@ describe('adapters:coingecko', () => {
         usdcOnBase,
         usdcOnMonad,
         usdcOnHyperEvm,
+        usdcOnPlasma,
         usdcOnPlume,
         usdcOnZkSyncEra,
         usdcOnWorldChain,

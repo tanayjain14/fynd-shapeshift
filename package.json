@@ -181,7 +181,6 @@
     "events": "^3.3.0",
     "fast-deep-equal": "^3.1.3",
     "framer-motion": "^12.6.5",
-    "friendly-challenge": "0.9.2",
     "grapheme-splitter": "^1.0.4",
     "html-react-parser": "^5.2.3",
     "html5-qrcode": "^2.3.8",
@@ -239,7 +238,7 @@
     "use-long-press": "^3.3.0",
     "uuid": "^9.0.0",
     "vaul": "^1.1.2",
-    "viem": "2.43.5",
+    "viem": "2.55.11",
     "wagmi": "^2.9.2",
     "web-vitals": "^2.1.4",
     "wouter": "^3.6.0",
@@ -333,7 +332,6 @@
     "overrides": {
       "esbuild": "0.25.12",
       "@bithighlander/bitcoin-cash-js-lib@^5.2.1": "5.2.1",
-      "friendly-challenge@0.9.2": "0.9.2",
       "react-dom@^18.2.0": "18.2.0",
       "web3": "4.2.1-dev.a0d6730.0",
       "@shapeshiftoss/bitcoinjs-lib@5.2.0-shapeshift.2": "5.2.0-shapeshift.2",
@@ -382,7 +380,7 @@
         "react": "19.2.4",
         "react-dom": "19.2.4",
         "@testing-library/dom": "8.20.1",
-        "viem": "2.43.5",
+        "viem": "2.55.11",
         "msw": "*",
         "ethers": "*",
         "starknet": "9.4.0",
@@ -401,11 +399,11 @@
     },
     "patchedDependencies": {
       "@bithighlander/bitcoin-cash-js-lib@5.2.1": "patches/@bithighlander-bitcoin-cash-js-lib-npm-5.2.1-92e8f8436e.patch",
-      "friendly-challenge@0.9.2": "patches/friendly-challenge-npm-0.9.2-db0cad46d3.patch",
       "react-dom@18.2.0": "patches/react-dom-npm-18.2.0-dd675bca1c.patch",
       "@shapeshiftoss/bitcoinjs-lib@5.2.0-shapeshift.2": "patches/@shapeshiftoss-bitcoinjs-lib-npm-5.2.0-shapeshift.2-e59ff81828.patch",
       "react-router@6.30.2": "patches/react-router-npm-6.30.0-cd12804d8c.patch",
-      "react-polyglot@0.7.2": "patches/react-polyglot-npm-0.7.2-636f85156f.patch"
+      "react-polyglot@0.7.2": "patches/react-polyglot-npm-0.7.2-636f85156f.patch",
+      "@ledgerhq/hw-app-btc@10.13.0": "patches/@ledgerhq__hw-app-btc@10.13.0.patch"
     },
     "onlyBuiltDependencies": [
       "esbuild",
@@ -420,10 +418,8 @@
       "tiny-secp256k1",
       "blake-hash",
       "bigint-buffer",
-      "node-hid",
       "usb",
       "sharp",
-      "electron",
       "unrs-resolver"
     ]
   }

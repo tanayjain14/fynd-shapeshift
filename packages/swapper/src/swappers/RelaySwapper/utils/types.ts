@@ -7,6 +7,7 @@ import type {
   GetTronTradeRateInput,
   GetUtxoTradeQuoteInput,
   GetUtxoTradeRateInput,
+  WithExactBuyAmount,
 } from '../../../types'
 
 export type RelayTradeQuoteInput =
@@ -21,12 +22,8 @@ export type RelayTradeRateInput =
   | GetSolanaTradeRateInput
   | GetTronTradeRateInput
 
-// Only the Tron unsigned-tx builder consumes this (to + calldata); every other
-// ecosystem's build data lives on transactionData
-export type RelayTransactionMetadata = {
-  to?: string
-  data?: string
-}
+export type RelayExactOutputTradeQuoteInput = WithExactBuyAmount<RelayTradeQuoteInput>
+export type RelayExactOutputTradeRateInput = WithExactBuyAmount<RelayTradeRateInput>
 
 export type RelayMetadata = {
   name: 'relay'
@@ -35,12 +32,38 @@ export type RelayMetadata = {
   data?: string
 }
 
+export type RelayRequestTransaction = {
+  hash?: string
+  chainId?: number
+}
+
+export type RelayRequestData = {
+  failReason?: string
+  refundFailReason?: string
+  inTxs?: RelayRequestTransaction[]
+  outTxs?: RelayRequestTransaction[]
+}
+
+// A single entry of the /requests/v2 listing, keyed by origin tx hash
+export type RelayRequest = {
+  status?: RelayStatus['status']
+  data?: RelayRequestData
+}
+
 export type RelayStatus = {
-  status: 'success' | 'failed' | 'pending' | 'refund' | 'delayed' | 'waiting'
+  status:
+    | 'success'
+    | 'failure'
+    | 'pending'
+    | 'submitted'
+    | 'depositing'
+    | 'refund'
+    | 'delayed'
+    | 'waiting'
   details?: string
   inTxHashes: string[]
   txHashes: string[]
-  time: number
+  updatedAt: number
   originChainId: number
   destinationChainId: number
 }
@@ -100,6 +123,7 @@ export type RelayFees = {
 }
 
 export type QuoteDetails = {
+  currencyIn: RelayCurrencyData
   currencyOut: RelayCurrencyData
   rate: string
   slippageTolerance: {
@@ -137,6 +161,7 @@ export type RelayQuoteTronItemData = {
     owner_address?: string
     contract_address?: string
     data?: string
+    call_value?: number
   }
 }
 

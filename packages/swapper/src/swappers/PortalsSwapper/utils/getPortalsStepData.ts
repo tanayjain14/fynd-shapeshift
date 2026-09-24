@@ -1,4 +1,5 @@
 import { fromChainId } from '@shapeshiftoss/caip'
+import { bnOrZero } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 
@@ -10,6 +11,7 @@ import { fetchPortalsTradeEstimate } from './fetchPortalsTradeOrder'
 
 type BaseArgs = {
   tx: PortalsTx
+  sellAmountCryptoBaseUnit: string
   spenderAddress: string
 }
 
@@ -35,7 +37,7 @@ export function getPortalsStepData(
 export async function getPortalsStepData(
   args: GetPortalsStepDataArgs,
 ): Promise<Result<PortalsRateStepData | PortalsQuoteStepData, SwapErrorRight>> {
-  const { tx, sellAsset, spenderAddress, input, deps } = args
+  const { tx, sellAsset, sellAmountCryptoBaseUnit, spenderAddress, input, deps } = args
 
   const adapter = deps.assertGetEvmChainAdapter(sellAsset.chainId)
   const supportsEIP1559 = 'supportsEIP1559' in input ? input.supportsEIP1559 : false
@@ -43,12 +45,12 @@ export async function getPortalsStepData(
   if (args.type === 'rate') {
     try {
       // No placeholder estimation for provider built routes - overridden estimation (approval
-      // state need not exist yet) with the Portals estimate endpoint as fallback
+      // state need not exist yet) with the Portals order and estimate endpoint as fallbacks
       const gasLimit = await (async () => {
         try {
           const gasLimit = await estimateGasWithStateOverride({
             sellAsset,
-            sellAmountCryptoBaseUnit: input.sellAmountIncludingProtocolFeesCryptoBaseUnit,
+            sellAmountCryptoBaseUnit,
             from: tx.from,
             spenderAddress,
             to: tx.to,
@@ -58,6 +60,11 @@ export async function getPortalsStepData(
 
           return gasLimit
         } catch {
+          // Portals only carry a tx gas limit on the bridge routes their estimate endpoint zeroes
+          const { gasLimit: txGasLimit } = tx
+
+          if (txGasLimit && bnOrZero(txGasLimit).gt(0)) return txGasLimit
+
           const quoteEstimateResponse = await fetchPortalsTradeEstimate({
             inputToken: args.inputToken,
             outputToken: args.outputToken,
@@ -66,7 +73,11 @@ export async function getPortalsStepData(
             swapperConfig: deps.config,
           })
 
-          return quoteEstimateResponse.context.gasLimit.toString()
+          const estimatedGasLimit = quoteEstimateResponse.context.gasLimit.toString()
+
+          if (bnOrZero(estimatedGasLimit).lte(0)) throw new Error('no Portals gas limit')
+
+          return estimatedGasLimit
         }
       })()
 
@@ -103,7 +114,7 @@ export async function getPortalsStepData(
       supportsEIP1559,
       stateOverride: {
         sellAsset,
-        sellAmountCryptoBaseUnit: input.sellAmountIncludingProtocolFeesCryptoBaseUnit,
+        sellAmountCryptoBaseUnit,
         spenderAddress,
       },
     })

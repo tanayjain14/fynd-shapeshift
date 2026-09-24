@@ -472,7 +472,7 @@
     "keepKey": {
       "title": "KeepKey Update Available",
       "newUpdateAvailable": "A new KeepKey update is available.",
-      "downloadCta": "Download Update",
+      "downloadCta": "Update KeepKey",
       "updateRequiredForFeature": "This update is required to support %{feature}"
     }
   },
@@ -1012,6 +1012,7 @@
       "quoteExpired": "Quote expired, try again.",
       "quoteUnsupportedChain": "Chain not supported",
       "quoteCrossChainNotSupported": "Cross chain not supported",
+      "quoteExactOutputNotSupported": "Exact receive amount not supported",
       "crossAccountNotSupported": "Cross-account not supported",
       "networkFeeEstimateFailed": "Failed to estimate network fee",
       "assetNotSupportedByWallet": "%{assetSymbol}.%{chainSymbol} not supported by wallet",
@@ -1231,8 +1232,16 @@
       },
       "downloadUpdater": {
         "header": "Download KeepKey Updater",
-        "button": "Download %{filename}",
-        "wrongPlatform": "Not using %{platform}? Click here"
+        "body": "We couldn't connect to your KeepKey. Install KeepKey Vault to update your device, then try pairing again.",
+        "bodyUpdateAvailable": "A firmware update is available for your KeepKey. Install KeepKey Vault to update your device.",
+        "wrongPlatform": "Not using %{platform}? Click here",
+        "download": {
+          "windows": "Download for Windows",
+          "linux": "Download for Linux",
+          "macAppleSilicon": "Download for Apple Silicon (M1 or newer)",
+          "macIntel": "Download for Intel",
+          "releasePage": "View all downloads"
+        }
       },
       "disconnect": {
         "header": "Disconnect KeepKey device",
@@ -1301,12 +1310,14 @@
       "broadcastingTransaction": "Broadcasting Transaction",
       "youHaveSent": "You have successfully sent %{amount} %{symbol}",
       "sendFailed": "Send failed",
+      "assetNotSupportedByWallet": "Sending %{asset} is not supported by %{wallet}.",
       "toAddress": "To Address",
       "toAddressOrEns": "To Address or ENS",
       "scanQrCode": "Scan QR Code",
       "qrCode": "QR Code",
       "addressBook": "Address Book",
       "noEntries": "No address found.",
+      "contractAddressWarning": "This is a contract address. Double-check that sending here is intentional. Funds sent to the wrong contract can be lost.",
       "yourWallets": "Your Wallets",
       "noInternalAccounts": "No accounts found.",
       "addNewAddress": "Add New Address",
@@ -1552,13 +1563,11 @@
   },
   "walletProvider": {
     "errors": {
-      "walletNotFound": "Unable to communicate with your wallet. If problem persists, please contact Keepkey support.",
-      "walletVersionTooOld": "Unable to pair your wallet. Please update your wallet to the latest version."
+      "walletNotFound": "Unable to communicate with your wallet. If problem persists, please contact Keepkey support."
     },
     "keepKey": {
       "errors": {
         "unknown": "An unexpected error occurred communicating with your KeepKey",
-        "updateAlert": "Firmware %{version} or later is required to use your KeepKey with this client. Please update your device.",
         "pinCancelled": "PIN entry was cancelled",
         "pinInvalid": "The PIN you entered is not valid",
         "pinMismatch": "The two PINs you entered do not match"
@@ -1568,12 +1577,27 @@
         "body": "Connect a KeepKey device and click Pair.",
         "button": "Pair",
         "conflictingApp": "Could not find your KeepKey. Another application may be trying to connect with your KeepKey.",
-        "downloadUpdaterApp": "Download updater app"
+        "timeout": "Failed to pair your KeepKey. Please reconnect your device and try again."
       },
       "pin": {
         "header": "Enter Your PIN",
         "body": "Use PIN layout shown on your device to find the location to press on the PIN pad.",
         "button": "Unlock"
+      },
+      "currentPin": {
+        "header": "Enter Your Current PIN",
+        "body": "Confirm the PIN you use today, then you can choose a new one.",
+        "button": "Continue"
+      },
+      "newPin": {
+        "header": "Create New PIN",
+        "body": "Use the PIN layout shown on your device to choose a new PIN.",
+        "button": "Continue"
+      },
+      "newPinConfirm": {
+        "header": "Confirm New PIN",
+        "body": "Re-enter your new PIN using the layout shown on your device.",
+        "button": "Confirm"
       },
       "settings": {
         "menuLabels": {
@@ -1603,7 +1627,9 @@
           "timeout": "Your device goes to sleep after 10 minutes of inactivity by default. However, you can change this.",
           "buttonPrompt": "Press and hold the button on your KeepKey to change the device %{setting}.",
           "updateSuccess": "%{setting} successfully updated!",
-          "updateFailed": "An error occurred whilst updating the %{setting}.",
+          "updateFailed": "%{setting} update failed",
+          "passphraseEnabled": "Passphrase protection enabled. You'll be asked for a passphrase each time you connect.",
+          "passphraseDisabled": "Passphrase protection disabled",
           "timeoutDuration": "%{minutes} minutes"
         },
         "alerts": {
@@ -1712,15 +1738,6 @@
       }
     },
     "ledger": {
-      "chains": {
-        "header": "Import Ledger Accounts",
-        "body": "To see your balances for each chain, you'll need to connect each app.",
-        "availableChains": "Available Chains",
-        "followTheInstructions": "Follow the instructions",
-        "toGetTheRuneApp": "to get the RUNE app on your device",
-        "added": "Added",
-        "connect": "Connect"
-      },
       "verify": {
         "confirmOnDevice": "Confirm on device",
         "addressMismatch": "Address mismatch. Please check you have the correct device connected and try again."
@@ -2992,7 +3009,7 @@
       },
       "why": {
         "title": "Why stake your FOX?",
-        "body": "Staking your FOX allows you to earn regular USDC payouts from the DAO's treasury, providing a steady stream of passive income in USDC per epoch. Additionally, a portion of DAO revenue will be allocated toward reducing the overall FOX supply through token burns. The staking process requires a minimum 28-day unstaking period, encouraging commitment and stability within the community."
+        "body": "Staking your FOX allows you to earn regular USDC payouts from the DAO's treasury, providing a steady stream of passive income in USDC per epoch. Additionally, a portion of DAO revenue is allocated toward buying FOX back from the open market. Unstaking is subject to a cooldown period, during which your FOX stays locked and stops earning."
       },
       "stake": {
         "title": "How do I stake my FOX?",
@@ -3011,8 +3028,8 @@
         "body": "Yes, you can have multiple unstaking amounts. Each unstaking action will have its own 28-day cooldown period."
       },
       "connect": {
-        "title": "How do total fees collected, total FOX staked, emissions pool, and FOX burn amount connect?",
-        "body": "The fees collected by the DAO are in native assets per swapper. A portion of this revenue is converted and distributed to FOX stakers as rewards, while another portion is allocated toward reducing the overall FOX supply through token burns. The total FOX staked influences the distribution of rewards, as rewards are distributed pro-rata based on the amount of FOX staked. The emissions pool represents the amount of FOX available for staking rewards, and the FOX burn amount is the portion of FOX purchased and burned."
+        "title": "How do total fees collected, total FOX staked, emissions pool, and FOX buyback amount connect?",
+        "body": "The fees collected by the DAO are in native assets per swapper. A portion of this revenue is converted and distributed to FOX stakers as rewards, while another portion is allocated toward buying FOX back from the open market. The total FOX staked influences the distribution of rewards, as rewards are distributed pro-rata based on the amount of FOX staked. The emissions pool represents the amount of FOX available for staking rewards, and the FOX buyback amount is the portion of revenue used to buy FOX back."
       }
     },
     "totals": "rFOX Totals",
@@ -3021,11 +3038,19 @@
     "totalFeesCollected": "Total Fees Collected (This Epoch)",
     "emissionsPool": "%{symbol} Emissions Pool (This Epoch)",
     "emissionsPoolHelper": "The total amount of rewards to be distributed %{symbol} stakers",
-    "foxBurnAmount": "FOX Burn Amount (This Epoch)",
+    "foxBuybackAmount": "FOX Buyback Amount (This Epoch)",
     "pendingDistribution": "Pending Distribution",
     "selectRuneAddress": "Select a RUNE address",
+    "unstakeDisabledMigrationTooltip": "Unstaking is disabled until %{migrationDate}, when the cooldown period is removed.",
     "lpSunsetWarningTitle": "Program Ended",
-    "lpSunsetWarningDescription": "The Arbitrum WETH/FOX Rewards program has been sunset. Please un-stake and claim your balance at your earliest convenience."
+    "lpSunsetWarningDescription": "The Arbitrum WETH/FOX Rewards program has been sunset. Please un-stake and claim your balance at your earliest convenience.",
+    "claimInProgress": "Claim in progress",
+    "migrationBannerTitle": "rFOX is moving to Ethereum",
+    "migrationBannerDescription": "rFOX staking is moving from Arbitrum to Ethereum on %{migrationDate}. You'll keep earning rewards on Arbitrum until then, when unstaking opens so you can move your FOX across.",
+    "migrationBannerCta": "Move FOX to Ethereum",
+    "stakingPausedTooltip": "Staking is paused for this program.",
+    "unstakingPausedTooltip": "Unstaking is paused for this program.",
+    "withdrawalsPausedTooltip": "Claiming is paused for this program."
   },
   "TCY": {
     "stake": "Stake",
@@ -3141,7 +3166,7 @@
     "foxToken": "FOX Token",
     "24hrPriceChange": "24h Price Change",
     "rfox": {
-      "totalBurn": "Total Burn",
+      "totalBuyback": "Total Buyback",
       "simulateTitle": "rFOX Simulator",
       "simulateSubtle": "Simulate your rFOX staking yield",
       "estimatedRewards": "Estimated Rewards",
@@ -3485,6 +3510,7 @@
       "quoteFailedTitle": "Quote Failed",
       "quoteFailedDescription": "Unable to get a quote for this transaction. Please try again.",
       "insufficientAssetForGas": "Insufficient %{symbol} for Gas",
+      "tronFeeLimitBelowEstimate": "The provider's fee limit is below the estimated network fee. Please try again later.",
       "rateLimited": "Too Many Requests"
     },
     "underMaintenance": "Under Maintenance",

@@ -3,24 +3,46 @@ import { z } from 'zod'
 import { registry } from '../../registry'
 import { BpsFields } from '../../types'
 
-export const RatesRequestSchema = z.object({
-  sellAssetId: z.string().min(1).openapi({ example: 'eip155:1/slip44:60' }),
-  buyAssetId: z.string().min(1).openapi({
-    example: 'eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-  }),
-  sellAmountCryptoBaseUnit: z
-    .string()
-    .regex(/^\d+$/, 'sellAmountCryptoBaseUnit must be a positive integer')
-    .openapi({ example: '1000000000000000000' }),
-  slippageTolerancePercentageDecimal: z
-    .string()
-    .regex(
-      /^(?:\d+)(?:\.\d+)?$/,
-      'slippageTolerancePercentageDecimal must be a non-negative decimal number',
-    )
-    .optional()
-    .openapi({ example: '0.01' }),
-})
+export const RatesRequestSchema = z
+  .object({
+    sellAssetId: z.string().min(1).openapi({ example: 'eip155:1/slip44:60' }),
+    buyAssetId: z.string().min(1).openapi({
+      example: 'eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    }),
+    sellAmountCryptoBaseUnit: z
+      .string()
+      .regex(/^\d+$/, 'sellAmountCryptoBaseUnit must be a positive integer')
+      .optional()
+      .openapi({
+        example: '1000000000000000000',
+        description:
+          'Exact amount of the sell asset to send, in base units. Required unless buyAmountCryptoBaseUnit is given.',
+      }),
+    buyAmountCryptoBaseUnit: z
+      .string()
+      .regex(/^(?!0+$)\d+$/, 'buyAmountCryptoBaseUnit must be a positive integer')
+      .optional()
+      .openapi({
+        example: '100000',
+        description:
+          'Exact amount of the buy asset to receive, in base units. Each rate returns the sell amount needed to get it. Mutually exclusive with sellAmountCryptoBaseUnit; swappers that cannot quote an exact output come back with an ExactOutputNotSupported error.',
+      }),
+    slippageTolerancePercentageDecimal: z
+      .string()
+      .regex(
+        /^(?:\d+)(?:\.\d+)?$/,
+        'slippageTolerancePercentageDecimal must be a non-negative decimal number',
+      )
+      .optional()
+      .openapi({ example: '0.01' }),
+  })
+  .refine(
+    ({ sellAmountCryptoBaseUnit, buyAmountCryptoBaseUnit }) =>
+      (sellAmountCryptoBaseUnit === undefined) !== (buyAmountCryptoBaseUnit === undefined),
+    {
+      message: 'Provide exactly one of sellAmountCryptoBaseUnit or buyAmountCryptoBaseUnit',
+    },
+  )
 
 const ApiRateSchema = z.object({
   swapperName: z.string(),
@@ -34,6 +56,11 @@ const ApiRateSchema = z.object({
       'First-hop approval spender for the sell token. Non-empty means executing this swapper pulls the sell token from an approved allowance - clients wanting to check or set an allowance manually before quoting can use it directly. Empty or absent means no approval is involved.',
   }),
   estimatedExecutionTimeMs: z.number().optional(),
+  supportsExternalPayment: z.boolean().openapi({
+    example: true,
+    description:
+      'True when this swap can be paid externally - the sell asset is sent to a provider-issued deposit address, so any wallet can fund it instead of the requesting client signing a transaction. Advisory only - the quote is authoritative: pay the address in its depositAddress field, and if the quote omits it, the route needs a connected wallet after all.',
+  }),
   priceImpactPercentageDecimal: z.string().optional(),
   ...BpsFields,
   networkFeeCryptoBaseUnit: z.string().optional(),

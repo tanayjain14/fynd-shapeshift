@@ -25,10 +25,6 @@ vi.mock('@shapeshiftoss/hdwallet-ledger-webusb', () => ({
   },
 }))
 
-vi.mock('friendly-challenge', () => ({
-  WidgetInstance: {},
-}))
-
 vi.mock('@shapeshiftoss/hdwallet-metamask-multichain', () => ({
   MetaMaskAdapter: {
     useKeyring: vi.fn(),
@@ -143,23 +139,6 @@ describe('WalletProvider', () => {
 
       expect(result.current.state.modalType).toBe(type)
       expect(result.current.state.initialRoute).toBe(SUPPORTED_WALLETS[type].routes[0].path)
-    })
-  })
-
-  describe('create', () => {
-    it('dispatches SET_CONNECTOR_TYPE and SET_INITAL_ROUTE', () => {
-      const result = setup()
-      const type = KeyManager.Native
-      expect(result.current.state.wallet).toBe(null)
-      expect(result.current.state.walletInfo).toBe(null)
-      expect(result.current.state.isConnected).toBe(false)
-
-      act(() => {
-        result.current.create(type)
-      })
-
-      expect(result.current.state.modalType).toBe(type)
-      expect(result.current.state.initialRoute).toBe('/native/create')
     })
   })
 

@@ -73,6 +73,17 @@ const CosmosSdkMsgDepositTransactionDataSchema = z.object({
   coin: z.string().openapi({ example: 'THOR.RUNE' }),
 })
 
+const TronTransactionDataSchema = z.object({
+  type: z.literal('tron').openapi({ example: 'tron' }),
+  to: z.string().openapi({ example: 'TCFNp179Lg46D16zKoumd4Poa2WFFdtqYj' }),
+  value: z.string().openapi({ example: '1000000' }),
+  data: z
+    .string()
+    .optional()
+    .openapi({ description: 'Contract call data; absent for a plain transfer of the sell asset' }),
+  memo: z.string().optional(),
+})
+
 const TransactionDataSchema = z.discriminatedUnion('type', [
   EvmTransactionDataSchema,
   SolanaTransactionDataSchema,
@@ -80,6 +91,7 @@ const TransactionDataSchema = z.discriminatedUnion('type', [
   UtxoTransactionDataSchema,
   CosmosSdkMsgSendTransactionDataSchema,
   CosmosSdkMsgDepositTransactionDataSchema,
+  TronTransactionDataSchema,
 ])
 
 export const ApprovalInfoSchema = z.object({
@@ -115,28 +127,56 @@ export const QuoteStepSchema = registry.register(
   }),
 )
 
-export const QuoteRequestSchema = z.object({
-  sellAssetId: z.string().min(1).openapi({ example: 'eip155:1/slip44:60' }),
-  buyAssetId: z.string().min(1).openapi({
-    example: 'bip122:000000000019d6689c085ae165831e93/slip44:0',
-  }),
-  sellAmountCryptoBaseUnit: z.string().min(1).openapi({ example: '1000000000000000000' }),
-  receiveAddress: z
-    .string()
-    .min(1)
-    .openapi({ example: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' }),
-  // For UTXO chains, use the account's receive address at index 0/0 (e.g. m/84'/0'/0'/0/0).
-  sendAddress: z.string().min(1).openapi({ example: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' }),
-  swapperName: z.string().min(1).openapi({ example: 'Relay' }),
-  slippageTolerancePercentageDecimal: z.string().optional().openapi({ example: '0.01' }),
-  accountNumber: z.coerce.number().optional().default(0).openapi({ example: 0 }),
-  // UTXO sells only: account xpub used to compute an exact network fee from the wallet's utxo set.
-  // Without it the returned network fee is a rough estimate.
-  xpub: z.string().optional().openapi({
-    example:
-      'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs',
-  }),
-})
+export const QuoteRequestSchema = z
+  .object({
+    sellAssetId: z.string().min(1).openapi({ example: 'eip155:1/slip44:60' }),
+    buyAssetId: z.string().min(1).openapi({
+      example: 'bip122:000000000019d6689c085ae165831e93/slip44:0',
+    }),
+    sellAmountCryptoBaseUnit: z
+      .string()
+      .regex(/^\d+$/, 'sellAmountCryptoBaseUnit must be a positive integer')
+      .optional()
+      .openapi({
+        example: '1000000000000000000',
+        description:
+          'Exact amount of the sell asset to send, in base units. Required unless buyAmountCryptoBaseUnit is given.',
+      }),
+    buyAmountCryptoBaseUnit: z
+      .string()
+      .regex(/^(?!0+$)\d+$/, 'buyAmountCryptoBaseUnit must be a positive integer')
+      .optional()
+      .openapi({
+        example: '100000',
+        description:
+          'Exact amount of the buy asset to receive, in base units. The sell amount you must send is derived from it and returned on the quote. Mutually exclusive with sellAmountCryptoBaseUnit, and rejected for swappers that cannot quote an exact output.',
+      }),
+    receiveAddress: z
+      .string()
+      .min(1)
+      .openapi({ example: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' }),
+    sendAddress: z.string().min(1).openapi({
+      example: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+      description:
+        "The user's address on the sell chain: the swap is funded from it, and refunds return to it. When the quote carries a depositAddress nothing is sent from it - the deposit can arrive from any wallet - so it only receives refunds, and must still be an address the user controls. For UTXO chains, use the account's first receive address (m/84'/0'/0'/0/0).",
+    }),
+    swapperName: z.string().min(1).openapi({ example: 'Relay' }),
+    slippageTolerancePercentageDecimal: z.string().optional().openapi({ example: '0.01' }),
+    accountNumber: z.coerce.number().optional().default(0).openapi({ example: 0 }),
+    // UTXO sells only: account xpub used to compute an exact network fee from the wallet's utxo set.
+    // Without it the returned network fee is a rough estimate.
+    xpub: z.string().optional().openapi({
+      example:
+        'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs',
+    }),
+  })
+  .refine(
+    ({ sellAmountCryptoBaseUnit, buyAmountCryptoBaseUnit }) =>
+      (sellAmountCryptoBaseUnit === undefined) !== (buyAmountCryptoBaseUnit === undefined),
+    {
+      message: 'Provide exactly one of sellAmountCryptoBaseUnit or buyAmountCryptoBaseUnit',
+    },
+  )
 
 export const QuoteResponseSchema = registry.register(
   'QuoteResponse',
@@ -154,7 +194,16 @@ export const QuoteResponseSchema = registry.register(
     networkFeeCryptoBaseUnit: z.string().optional().openapi({ example: '23000' }),
     approval: ApprovalInfoSchema,
     steps: z.array(QuoteStepSchema),
-    expiresAt: z.number(),
+    depositAddress: z.string().optional().openapi({
+      example: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      description:
+        'Present when this quote can be paid by a plain transfer from any wallet: send exactly sellAmountCryptoBaseUnit here before expiresAt, then poll /v1/swap/status with quoteId alone. A deposit sent after expiresAt may be refunded to sendAddress, or lost. Absent means the swap must be signed by the wallet at sendAddress.',
+    }),
+    expiresAt: z.number().openapi({
+      example: 1754265600000,
+      description:
+        "Epoch ms after which the quote must not be executed - the swapper's own deadline. Broadcasting after it risks a failed swap, or lost funds on an externally paid quote. Request a fresh quote instead.",
+    }),
   }),
 )
 

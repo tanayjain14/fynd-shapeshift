@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { WalletClient } from 'viem'
-import { createPublicClient, encodeFunctionData, erc20Abi, http } from 'viem'
+import { createPublicClient, http } from 'viem'
 
 import { getBaseAsset } from '../constants/chains'
 import { switchOrAddChain, VIEM_CHAINS_BY_ID } from '../constants/viemChains'
@@ -32,7 +32,10 @@ export const useSwapApproval = () => {
         const { quote, sellAsset, sellAmountBaseUnit } = actorRef.getSnapshot().context
 
         if (!quote?.approval?.spender) {
-          actorRef.send({ type: 'APPROVAL_ERROR', error: 'No approval data in quote' })
+          actorRef.send({
+            type: 'APPROVAL_ERROR',
+            error: 'Could not prepare the approval — please try again',
+          })
           return
         }
 
@@ -40,7 +43,25 @@ export const useSwapApproval = () => {
         if (!sellAssetAddress || !/^0x[a-fA-F0-9]{40}$/.test(sellAssetAddress)) {
           actorRef.send({
             type: 'APPROVAL_ERROR',
-            error: 'Approval not applicable for native assets',
+            error: 'This asset does not need an approval',
+          })
+          return
+        }
+
+        if (!sellAmountBaseUnit || sellAmountBaseUnit === '0') {
+          actorRef.send({
+            type: 'APPROVAL_ERROR',
+            error: 'Could not prepare the approval — please try again',
+          })
+          return
+        }
+
+        // api-supplied approvals are exact and in broadcast order (reset-then-approve for USDT-likes)
+        const approvalTxs = quote.approval.approvalTxs
+        if (!approvalTxs?.length) {
+          actorRef.send({
+            type: 'APPROVAL_ERROR',
+            error: 'Could not prepare the approval — please try again',
           })
           return
         }
@@ -66,31 +87,27 @@ export const useSwapApproval = () => {
           rpcUrls: { default: { http: [] } },
         }
 
-        if (!sellAmountBaseUnit || sellAmountBaseUnit === '0') {
-          actorRef.send({ type: 'APPROVAL_ERROR', error: 'No sell amount specified' })
-          return
-        }
-
-        const approvalData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [quote.approval.spender as `0x${string}`, BigInt(sellAmountBaseUnit)],
-        })
-
-        const approvalHash = await client.sendTransaction({
-          to: sellAssetAddress as `0x${string}`,
-          data: approvalData,
-          value: BigInt(0),
-          chain,
-          account: walletAddress as `0x${string}`,
-        })
-
         const rpcUrl = chain.rpcUrls?.default?.http?.[0]
         const publicClient = createPublicClient({
           chain,
           transport: rpcUrl ? http(rpcUrl) : http(),
         })
-        await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+
+        let approvalHash: `0x${string}` | undefined
+        for (const [index, approvalTx] of approvalTxs.entries()) {
+          actorRef.send({ type: 'APPROVAL_TX_STARTED', index })
+          approvalHash = await client.sendTransaction({
+            to: approvalTx.to as `0x${string}`,
+            data: approvalTx.data as `0x${string}`,
+            value: BigInt(approvalTx.value),
+            chain,
+            account: walletAddress as `0x${string}`,
+          })
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: approvalHash })
+          if (receipt.status !== 'success') throw new Error('Approval transaction reverted')
+        }
+
+        if (!approvalHash) throw new Error('Expected at least one approval transaction')
 
         actorRef.send({ type: 'APPROVAL_SUCCESS', txHash: approvalHash })
       } catch (error) {

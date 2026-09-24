@@ -44,12 +44,12 @@ export enum SwapperName {
   Relay = 'Relay',
   Thorchain = 'THORChain',
   Mayachain = 'MAYAChain',
+  Chainflip = 'Chainflip',
   //ArbitrumBridge = 'Arbitrum Bridge',
   //Avnu = 'AVNU',
   //Bebop = 'Bebop',
   //ButterSwap = 'ButterSwap',
   //Cetus = 'Cetus',
-  //Chainflip = 'Chainflip',
   //CowSwap = 'CoW Swap',
   //Portals = 'Portals',
   //Sunio = 'Sun.io',
@@ -119,6 +119,7 @@ export type TradeRate = {
   shapeshiftBps: string
   affiliateBps: string
   networkFeeCryptoBaseUnit?: string
+  supportsExternalPayment?: boolean
   error?: {
     code: string
     message: string
@@ -151,25 +152,34 @@ export type SwapWidgetFilters = {
   disabledAssetIds?: AssetId[]
 }
 
-export type SwapWidgetProps = {
-  partnerCode?: string
-  apiBaseUrl?: string
-  allowShapeshiftRedirect?: boolean
-  defaultSellAsset?: Asset
-  defaultBuyAsset?: Asset
-  sellFilters?: SwapWidgetFilters
-  buyFilters?: SwapWidgetFilters
-  allowedSwapperNames?: SwapperName[]
-  onSwapSuccess?: (txHash: string) => void
-  onSwapError?: (error: Error) => void
-  theme?: ThemeMode | ThemeConfig
-  defaultSlippage?: string
-  showPoweredBy?: boolean
-  showConnectButton?: boolean
-  walletConnectProjectId?: string
-  ratesRefetchInterval?: number
-  isBuyAssetLocked?: boolean
-}
+export type ReceiveAddressProps =
+  | { defaultReceiveAddress: string; isReceiveAddressLocked?: boolean }
+  | { defaultReceiveAddress?: never; isReceiveAddressLocked?: false }
+
+export type BuyAmountProps =
+  | { defaultBuyAmountCryptoBaseUnit: string; isBuyAmountLocked?: boolean }
+  | { defaultBuyAmountCryptoBaseUnit?: never; isBuyAmountLocked?: false }
+
+export type SwapWidgetProps = ReceiveAddressProps &
+  BuyAmountProps & {
+    partnerCode?: string
+    apiBaseUrl?: string
+    allowShapeshiftRedirect?: boolean
+    defaultSellAsset?: Asset
+    defaultBuyAsset?: Asset
+    sellFilters?: SwapWidgetFilters
+    buyFilters?: SwapWidgetFilters
+    allowedSwapperNames?: SwapperName[]
+    onSwapSuccess?: (txHash: string) => void
+    onSwapError?: (error: Error) => void
+    theme?: ThemeMode | ThemeConfig
+    defaultSlippage?: string
+    showPoweredBy?: boolean
+    showConnectButton?: boolean
+    walletConnectProjectId?: string
+    ratesRefetchInterval?: number
+    isBuyAssetLocked?: boolean
+  }
 
 export type RatesResponse = {
   rates: TradeRate[]
@@ -223,6 +233,7 @@ export type QuoteResponse = {
   steps: ApiQuoteStep[]
   approval: ApprovalInfo
   expiresAt: number
+  depositAddress?: string // Present only when the swap supports external payments
 }
 
 export type AssetsResponse = {
@@ -315,6 +326,12 @@ export const isWidgetExecutableChainId = (chainId: string): boolean =>
   isWidgetExecutableUtxoChainId(chainId) ||
   isWidgetExecutableSolanaChainId(chainId)
 
+// Chains the widget can't sign for that can still be paid through a deposit address
+const EXTERNAL_PAYMENT_SELL_CHAIN_ID_SET: ReadonlySet<string> = new Set([zecChainId])
+
+export const isExternalPaymentSellChainId = (chainId: string): boolean =>
+  EXTERNAL_PAYMENT_SELL_CHAIN_ID_SET.has(chainId)
+
 const SUPPORTED_CHAIN_ID_SET: ReadonlySet<string> = new Set([
   ...Object.values(EVM_CHAIN_IDS),
   ...Object.values(UTXO_CHAIN_IDS),
@@ -345,6 +362,10 @@ export const formatAmount = (amount: string, decimals: number, maxDecimals?: num
   })
 }
 
+// Ungrouped and unrounded, unlike formatAmount - an input's value is parsed back into base units
+export const formatAmountForInput = (amount: string, decimals: number): string =>
+  BigAmount.fromBaseUnit({ value: amount, precision: decimals }).toPrecision()
+
 export const parseAmount = (amount: string, decimals: number): string => {
   return BigAmount.fromPrecision({ value: amount, precision: decimals }).toBaseUnit()
 }
@@ -352,22 +373,6 @@ export const parseAmount = (amount: string, decimals: number): string => {
 export const truncateAddress = (address: string, chars = 4): string => {
   if (address.length <= chars * 2 + 2) return address
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
-}
-
-export type TransactionStatus = 'pending' | 'confirmed' | 'failed'
-
-export type TransactionStatusResult = {
-  status: TransactionStatus
-  confirmations?: number
-  blockNumber?: number
-  error?: string
-}
-
-export type BitcoinTransactionStatus = {
-  confirmed: boolean
-  block_height?: number
-  block_hash?: string
-  block_time?: number
 }
 
 export type WalletProviderNamespace = 'eip155' | 'bip122' | 'solana'

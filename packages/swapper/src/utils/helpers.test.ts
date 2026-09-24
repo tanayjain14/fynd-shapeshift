@@ -4,7 +4,10 @@ import { KnownChainIds } from '@shapeshiftoss/types'
 import { treasuryChainIds } from '@shapeshiftoss/utils'
 import { describe, expect, it } from 'vitest'
 
-import { getTreasuryAddressFromChainId } from './helpers'
+import { swappers } from '../constants'
+import { SwapperName } from '../types'
+import type { DepositAddressStep } from './helpers'
+import { getDepositAddress, getTreasuryAddressFromChainId, normalizeEpochToMs } from './helpers'
 
 describe('getTreasuryAddressFromChainId', () => {
   // Affiliate and fee recipient addresses for every swapper flow through here, so pin the values
@@ -21,6 +24,9 @@ describe('getTreasuryAddressFromChainId', () => {
     [KnownChainIds.MonadMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
     [KnownChainIds.HyperEvmMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
     [KnownChainIds.BobMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
+    [KnownChainIds.RobinhoodMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
+    [KnownChainIds.PlasmaMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
+    [KnownChainIds.MegaEthMainnet]: '0xF5AA59151bE6515C4Ca68A0282CF68B3eA4846fC',
     [KnownChainIds.BitcoinMainnet]:
       'bc1q9xrjfet2a05r3jvsxx66rru7pysevk5dvqasdw9eeea3rfqlk33qr4hghh',
     [KnownChainIds.SolanaMainnet]: 'FxXyPB5RH4uHLPPJR5H89zGwZp19juBetmRwrxfsLj2j',
@@ -37,5 +43,75 @@ describe('getTreasuryAddressFromChainId', () => {
     expect(() => getTreasuryAddressFromChainId(thorchainChainId as EvmChainId)).toThrow(
       '[getTreasuryAddressFromChainId] - Unsupported chainId',
     )
+  })
+})
+
+describe('normalizeEpochToMs', () => {
+  // 2026-08-05T00:00:00Z expressed in each unit
+  const epochS = 1785888000
+  const epochMs = epochS * 1000
+
+  it('converts unix seconds to ms', () => {
+    expect(normalizeEpochToMs(epochS)).toBe(epochMs)
+  })
+
+  it('passes milliseconds through', () => {
+    expect(normalizeEpochToMs(epochMs)).toBe(epochMs)
+  })
+
+  it('converts microseconds to ms', () => {
+    expect(normalizeEpochToMs(epochMs * 1000)).toBe(epochMs)
+  })
+
+  it('converts nanoseconds to ms', () => {
+    expect(normalizeEpochToMs(epochMs * 1e6)).toBe(epochMs)
+  })
+})
+
+const makeStep = (step: DepositAddressStep): DepositAddressStep => step
+
+describe('getDepositAddress', () => {
+  it('reads the chainflip deposit address', () => {
+    const step = makeStep({ chainflipSpecific: { depositAddress: 'bc1qdeposit' } })
+    expect(getDepositAddress(step, SwapperName.Chainflip)).toBe('bc1qdeposit')
+  })
+
+  it('returns undefined when chainflip has no deposit address', () => {
+    expect(getDepositAddress(makeStep({}), SwapperName.Chainflip)).toBeUndefined()
+  })
+
+  it('reads the near intents deposit address', () => {
+    const step = makeStep({
+      swapperMetadata: { name: 'nearIntents', depositAddress: '0xdeposit' },
+    })
+    expect(getDepositAddress(step, SwapperName.NearIntents)).toBe('0xdeposit')
+  })
+
+  it('rejects a memo-bound near intents deposit address', () => {
+    const step = makeStep({
+      swapperMetadata: { name: 'nearIntents', depositAddress: 'EQdeposit', depositMemo: '12345' },
+    })
+    expect(getDepositAddress(step, SwapperName.NearIntents)).toBeUndefined()
+  })
+
+  it('rejects an empty near intents deposit address', () => {
+    const step = makeStep({ swapperMetadata: { name: 'nearIntents', depositAddress: '' } })
+    expect(getDepositAddress(step, SwapperName.NearIntents)).toBeUndefined()
+  })
+
+  it('returns undefined for swappers that do not use deposit addresses', () => {
+    const step = makeStep({ chainflipSpecific: { depositAddress: 'bc1qdeposit' } })
+    expect(getDepositAddress(step, SwapperName.Relay)).toBeUndefined()
+  })
+})
+
+describe('supportsExternalPayment', () => {
+  it('is flagged on exactly the externally paid swappers', () => {
+    const flagged = Object.entries(swappers)
+      .filter(([, swapper]) => swapper?.supportsExternalPayment)
+      .map(([name]) => name)
+      .sort()
+
+    expect(flagged).toEqual([SwapperName.Chainflip, SwapperName.NearIntents].sort())
   })
 })

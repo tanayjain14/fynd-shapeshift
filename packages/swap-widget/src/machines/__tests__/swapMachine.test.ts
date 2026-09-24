@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createActor } from 'xstate'
 
 import type { Asset, QuoteResponse, TradeRate } from '../../types'
+import { formatAmountForInput } from '../../types'
 import { createInitialContext, swapMachine } from '../swapMachine'
 
 const TEST_ETH: Asset = {
@@ -200,6 +201,137 @@ describe('swapMachine', () => {
     })
   })
 
+  // Only one side can drive a trade, so the machine has to retire the other on every entry
+  describe('exact output — buy amount exclusivity', () => {
+    it('SET_BUY_AMOUNT clears the sell side', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({
+        type: 'SET_SELL_AMOUNT',
+        amount: '1.5',
+        amountBaseUnit: '1500000000000000000',
+        fiatValue: '3000',
+      })
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+
+      const ctx = actor.getSnapshot().context
+      expect(ctx.buyAmount).toBe('0.5')
+      expect(ctx.buyAmountBaseUnit).toBe('500000')
+      expect(ctx.sellAmount).toBe('')
+      expect(ctx.sellAmountBaseUnit).toBeUndefined()
+      expect(ctx.sellAmountFiat).toBe('')
+      actor.stop()
+    })
+
+    it('SET_SELL_AMOUNT clears the buy side', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+      actor.send({
+        type: 'SET_SELL_AMOUNT',
+        amount: '1.5',
+        amountBaseUnit: '1500000000000000000',
+        fiatValue: '',
+      })
+
+      const ctx = actor.getSnapshot().context
+      expect(ctx.sellAmountBaseUnit).toBe('1500000000000000000')
+      expect(ctx.buyAmount).toBe('')
+      expect(ctx.buyAmountBaseUnit).toBeUndefined()
+      actor.stop()
+    })
+
+    // A rate priced against the other side of the trade can't describe this one
+    it('SET_SELL_AMOUNT drops a rate selected for the buy amount', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+      actor.send({ type: 'SELECT_RATE', rate: TEST_RATE })
+      actor.send({
+        type: 'SET_SELL_AMOUNT',
+        amount: '1.5',
+        amountBaseUnit: '1500000000000000000',
+        fiatValue: '',
+      })
+
+      expect(actor.getSnapshot().context.selectedRate).toBeNull()
+      actor.stop()
+    })
+
+    // The sell field is editable during exact output but shows a crypto amount, so a stale fiat mode
+    // would have the next thing the user types read as dollars
+    it('SET_BUY_AMOUNT leaves fiat entry mode', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_SELL_FIAT_MODE', isFiat: true })
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+
+      expect(actor.getSnapshot().context.isSellAmountFiat).toBe(false)
+      actor.stop()
+    })
+
+    // The toggle picks a display unit, so it must never disturb either side's amount
+    it('SET_SELL_FIAT_MODE leaves the buy amount untouched', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+      actor.send({ type: 'SET_SELL_FIAT_MODE', isFiat: true })
+
+      const ctx = actor.getSnapshot().context
+      expect(ctx.isSellAmountFiat).toBe(true)
+      expect(ctx.buyAmount).toBe('0.5')
+      expect(ctx.buyAmountBaseUnit).toBe('500000')
+      actor.stop()
+    })
+
+    // Base units mean nothing without the precision they were counted in, but the entered amount does
+    it('SET_BUY_ASSET keeps the buy amount and recalculates its base units', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+      actor.send({ type: 'SET_BUY_ASSET', asset: TEST_BTC })
+
+      const ctx = actor.getSnapshot().context
+      expect(ctx.buyAsset.symbol).toBe('BTC')
+      expect(ctx.buyAmount).toBe('0.5')
+      // 0.5 at BTC's 8 decimals, not USDC's 6
+      expect(ctx.buyAmountBaseUnit).toBe('50000000')
+      actor.stop()
+    })
+
+    // A seeded amount is re-parsed on a buy asset change, so a display-formatted one would zero out
+    it('SET_BUY_ASSET recalculates a seeded amount large enough to carry separators', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({
+        type: 'SET_BUY_AMOUNT',
+        amount: formatAmountForInput('1234500000', 6),
+        amountBaseUnit: '1234500000',
+      })
+      actor.send({ type: 'SET_BUY_ASSET', asset: TEST_BTC })
+
+      // 1234.5 at BTC's 8 decimals
+      expect(actor.getSnapshot().context.buyAmountBaseUnit).toBe('123450000000')
+      actor.stop()
+    })
+
+    it('clearing the buy amount returns the trade to the sell side', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '0.5', amountBaseUnit: '500000' })
+      actor.send({ type: 'SET_BUY_AMOUNT', amount: '', amountBaseUnit: undefined })
+
+      expect(actor.getSnapshot().context.buyAmountBaseUnit).toBeUndefined()
+      actor.stop()
+    })
+
+    it('createInitialContext seeds a buy amount', () => {
+      const ctx = createInitialContext({ buyAmount: '0.5', buyAmountBaseUnit: '500000' })
+      expect(ctx.buyAmount).toBe('0.5')
+      expect(ctx.buyAmountBaseUnit).toBe('500000')
+    })
+  })
+
   describe('input → quoting transition', () => {
     it('FETCH_QUOTE transitions to quoting when hasValidInput', () => {
       const actor = createActor(swapMachine)
@@ -385,6 +517,28 @@ describe('swapMachine', () => {
       actor.stop()
     })
 
+    it('links the sell tx off the hash, so the first poll is not waited on', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({
+        type: 'SET_SELL_AMOUNT',
+        amount: '1',
+        amountBaseUnit: '1000000000000000000',
+        fiatValue: '',
+      })
+      actor.send({ type: 'FETCH_QUOTE' })
+      actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_QUOTE_NO_APPROVAL })
+      actor.send({ type: 'EXECUTE_SUCCESS', txHash: '0xTxHash' })
+
+      const { sellAsset, txLink } = actor.getSnapshot().context
+      expect(txLink).toBe(`${sellAsset.explorerTxLink}0xTxHash`)
+
+      // The api reports the same link it derives from the same asset, so nothing changes
+      actor.send({ type: 'TX_LINKS_UPDATED', txLink: txLink ?? undefined })
+      expect(actor.getSnapshot().context.txLink).toBe(txLink)
+      actor.stop()
+    })
+
     it('EXECUTE_ERROR transitions to error', () => {
       const actor = createActor(swapMachine)
       actor.start()
@@ -399,6 +553,25 @@ describe('swapMachine', () => {
       actor.send({ type: 'EXECUTE_ERROR', error: 'Transaction failed' })
       expect(actor.getSnapshot().value).toBe('error')
       expect(actor.getSnapshot().context.error).toBe('Transaction failed')
+      actor.stop()
+    })
+
+    it('retries an expired quote by fetching a new one, not by executing the stale one', () => {
+      const actor = createActor(swapMachine)
+      actor.start()
+      actor.send({
+        type: 'SET_SELL_AMOUNT',
+        amount: '1',
+        amountBaseUnit: '1000000000000000000',
+        fiatValue: '',
+      })
+      actor.send({ type: 'FETCH_QUOTE' })
+      actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_QUOTE_NO_APPROVAL })
+      actor.send({ type: 'QUOTE_EXPIRED' })
+      expect(actor.getSnapshot().context.errorSource).toBe('QUOTE_EXPIRED')
+
+      actor.send({ type: 'RETRY' })
+      expect(actor.getSnapshot().value).toBe('quoting')
       actor.stop()
     })
   })
@@ -683,5 +856,370 @@ describe('swapMachine', () => {
       expect(context.sellAmountBaseUnit).toBeUndefined()
       actor.stop()
     })
+  })
+})
+
+const TEST_DEPOSIT_QUOTE = {
+  quoteId: 'quote-1',
+  depositAddress: 'bc1qdeposit',
+  expiresAt: 9_999_999_999_999,
+  sellAsset: TEST_BTC,
+  buyAsset: TEST_ETH,
+  approval: { isRequired: false, spender: '', approvalTxs: [] },
+} as unknown as QuoteResponse
+
+const startInDepositQuoting = () => {
+  const actor = createActor(swapMachine)
+  actor.start()
+  actor.send({ type: 'SET_SELL_ASSET', asset: TEST_BTC })
+  actor.send({ type: 'SET_BUY_ASSET', asset: TEST_ETH })
+  actor.send({
+    type: 'SET_SELL_AMOUNT',
+    amount: '0.1',
+    amountBaseUnit: '10000000',
+    fiatValue: '',
+  })
+  actor.send({ type: 'SET_SEND_ADDRESS', address: 'bc1qrefund' })
+  actor.send({ type: 'FETCH_QUOTE', isDepositFlow: true })
+  return actor
+}
+
+describe('deposit flow', () => {
+  it('enters awaiting_deposit when the quote carries a deposit address', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    expect(actor.getSnapshot().value).toBe('awaiting_deposit')
+    expect(actor.getSnapshot().context.quote?.depositAddress).toBe('bc1qdeposit')
+    actor.stop()
+  })
+
+  it('errors instead of executing when a deposit quote has no deposit address', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_QUOTE_NO_APPROVAL })
+    const snapshot = actor.getSnapshot()
+    expect(snapshot.value).toBe('error')
+    expect(snapshot.context.errorSource).toBe('QUOTE_ERROR')
+    actor.stop()
+  })
+
+  it('still executes with a wallet when the flow is not a deposit flow', () => {
+    const actor = createActor(swapMachine)
+    actor.start()
+    actor.send({
+      type: 'SET_SELL_AMOUNT',
+      amount: '1',
+      amountBaseUnit: '1000000000000000000',
+      fiatValue: '',
+    })
+    actor.send({ type: 'FETCH_QUOTE' })
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    expect(actor.getSnapshot().value).toBe('executing')
+    actor.stop()
+  })
+
+  it('can leave a detected deposit for a new swap without losing the assets', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'DEPOSIT_DETECTED', txHash: '0xdeposit', observedAt: 5_000 })
+    actor.send({ type: 'RESET' })
+
+    const snap = actor.getSnapshot()
+    expect(snap.value).toBe('input')
+    expect(snap.context.isDepositFlow).toBe(false)
+    expect(snap.context.txHash).toBeNull()
+    expect(snap.context.depositObservedAt).toBeNull()
+    expect(snap.context.quote).toBeNull()
+  })
+
+  it('moves to polling_status with the deposit hash on DEPOSIT_DETECTED', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'DEPOSIT_DETECTED', txHash: '0xdeposit', observedAt: 5_000 })
+    expect(actor.getSnapshot().value).toBe('polling_status')
+    expect(actor.getSnapshot().context.txHash).toBe('0xdeposit')
+    actor.stop()
+  })
+
+  it('moves to deposit_expired when the window closes', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'DEPOSIT_EXPIRED' })
+    expect(actor.getSnapshot().value).toBe('deposit_expired')
+    actor.stop()
+  })
+
+  it('recovers from deposit_expired when a late deposit is detected', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'DEPOSIT_EXPIRED' })
+    actor.send({ type: 'DEPOSIT_DETECTED', txHash: '0xlate', observedAt: 5_000 })
+
+    const snapshot = actor.getSnapshot()
+    expect(snapshot.value).toBe('polling_status')
+    expect(snapshot.context.txHash).toBe('0xlate')
+    actor.stop()
+  })
+
+  it('re-quotes for a fresh address from deposit_expired', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'DEPOSIT_EXPIRED' })
+    actor.send({ type: 'RETRY' })
+    expect(actor.getSnapshot().value).toBe('quoting')
+    expect(actor.getSnapshot().context.isDepositFlow).toBe(true)
+    actor.stop()
+  })
+
+  it('resets out of awaiting_deposit and clears the deposit flow', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'RESET' })
+    const snapshot = actor.getSnapshot()
+    expect(snapshot.value).toBe('input')
+    expect(snapshot.context.isDepositFlow).toBe(false)
+    expect(snapshot.context.quote).toBeNull()
+    actor.stop()
+  })
+
+  it('keeps the send address across a reset', () => {
+    const actor = startInDepositQuoting()
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    actor.send({ type: 'RESET' })
+    expect(actor.getSnapshot().context.sendAddress).toBe('bc1qrefund')
+    actor.stop()
+  })
+
+  const restoreDeposit = () => {
+    const actor = createActor(swapMachine)
+    actor.start()
+    actor.send({
+      type: 'RESTORE_DEPOSIT',
+      quote: TEST_DEPOSIT_QUOTE,
+      sendAddress: 'bc1qrefund',
+      receiveAddress: '0xreceive',
+      sellAmountBaseUnit: '10000000',
+      buyAmountBaseUnit: undefined,
+      txHash: undefined,
+      depositObservedAt: undefined,
+    })
+    return actor
+  }
+
+  it('restores a persisted deposit straight into awaiting_deposit', () => {
+    const actor = restoreDeposit()
+    const snapshot = actor.getSnapshot()
+    expect(snapshot.value).toBe('awaiting_deposit')
+    expect(snapshot.context.isDepositFlow).toBe(true)
+    expect(snapshot.context.sendAddress).toBe('bc1qrefund')
+    expect(snapshot.context.sellAsset.symbol).toBe('BTC')
+    actor.stop()
+  })
+
+  it('restores the receive address, which the quote does not carry', () => {
+    const actor = restoreDeposit()
+    expect(actor.getSnapshot().context.receiveAddress).toBe('0xreceive')
+    actor.stop()
+  })
+
+  it('restores chain flags describing the restored assets, not the defaults', () => {
+    const actor = restoreDeposit()
+    const { context } = actor.getSnapshot()
+    expect(context.chainType).toBe('utxo')
+    expect(context.isSellAssetUtxo).toBe(true)
+    expect(context.isSellAssetEvm).toBe(false)
+    expect(context.isBuyAssetEvm).toBe(true)
+    actor.stop()
+  })
+
+  it('seeds the amount that drove the quote, so a re-quote has something to ask for', () => {
+    const actor = restoreDeposit()
+    const { context } = actor.getSnapshot()
+
+    expect(context.sellAmountBaseUnit).toBe('10000000')
+    expect(context.sellAmount).toBe('0.1')
+    actor.stop()
+  })
+
+  it('carries the restored chain flags through a reset into the next swap', () => {
+    const actor = restoreDeposit()
+    actor.send({ type: 'RESET' })
+    const { context } = actor.getSnapshot()
+    expect(context.sellAsset.symbol).toBe('BTC')
+    expect(context.chainType).toBe('utxo')
+    expect(context.isSellAssetEvm).toBe(false)
+    actor.stop()
+  })
+})
+
+describe('restoring a deposit that was already funded', () => {
+  const restoreWith = (txHash: string | undefined) => {
+    const actor = createActor(swapMachine)
+    actor.start()
+    actor.send({
+      type: 'RESTORE_DEPOSIT',
+      quote: TEST_DEPOSIT_QUOTE,
+      sendAddress: 'bc1qrefund',
+      receiveAddress: '0xreceive',
+      sellAmountBaseUnit: '10000000',
+      buyAmountBaseUnit: undefined,
+      txHash,
+      depositObservedAt: txHash ? 5_000 : undefined,
+    })
+    return actor
+  }
+
+  it('rejoins settlement rather than asking for the deposit again', () => {
+    const actor = restoreWith('0xdead')
+    expect(actor.getSnapshot().matches('polling_status')).toBe(true)
+    expect(actor.getSnapshot().context.txHash).toBe('0xdead')
+    actor.stop()
+  })
+
+  it('still awaits a deposit that was never seen', () => {
+    const actor = restoreWith(undefined)
+    expect(actor.getSnapshot().matches('awaiting_deposit')).toBe(true)
+    expect(actor.getSnapshot().context.txHash).toBeNull()
+    actor.stop()
+  })
+})
+
+describe('a deposit flow always reaches a terminal state', () => {
+  const restoreInto = (txHash: string | undefined) => {
+    const actor = createActor(swapMachine)
+    actor.start()
+    actor.send({
+      type: 'RESTORE_DEPOSIT',
+      quote: TEST_DEPOSIT_QUOTE,
+      sendAddress: 'bc1qrefund',
+      receiveAddress: '0xreceive',
+      sellAmountBaseUnit: '10000000',
+      buyAmountBaseUnit: undefined,
+      txHash,
+      depositObservedAt: txHash ? 5_000 : undefined,
+    })
+    return actor
+  }
+
+  // A provider can settle or refund without ever reporting a hash
+  it.each([
+    ['awaiting_deposit', undefined],
+    ['polling_status', '0xdead'],
+  ])('confirms from %s', (_state, txHash) => {
+    const actor = restoreInto(txHash)
+    actor.send({ type: 'STATUS_CONFIRMED' })
+    expect(actor.getSnapshot().matches('complete')).toBe(true)
+    actor.stop()
+  })
+
+  it.each([
+    ['awaiting_deposit', undefined],
+    ['polling_status', '0xdead'],
+  ])('fails from %s', (_state, txHash) => {
+    const actor = restoreInto(txHash)
+    actor.send({ type: 'STATUS_FAILED', error: 'Swap failed' })
+    expect(actor.getSnapshot().matches('error')).toBe(true)
+    actor.stop()
+  })
+
+  it('confirms and fails from deposit_expired', () => {
+    const confirmed = restoreInto(undefined)
+    confirmed.send({ type: 'DEPOSIT_EXPIRED' })
+    expect(confirmed.getSnapshot().matches('deposit_expired')).toBe(true)
+    confirmed.send({ type: 'STATUS_CONFIRMED' })
+    expect(confirmed.getSnapshot().matches('complete')).toBe(true)
+    confirmed.stop()
+
+    const failed = restoreInto(undefined)
+    failed.send({ type: 'DEPOSIT_EXPIRED' })
+    failed.send({ type: 'STATUS_FAILED', error: 'Refunded' })
+    expect(failed.getSnapshot().matches('error')).toBe(true)
+    failed.stop()
+  })
+
+  it('keeps the swapper link from detection when the confirmation omits it', () => {
+    const actor = restoreInto(undefined)
+    actor.send({
+      type: 'DEPOSIT_DETECTED',
+      txHash: '0xdead',
+      txLink: 'https://explorer/tx/0xdead',
+      swapperTxLink: 'https://swapper/deposit',
+      observedAt: 5_000,
+    })
+    actor.send({ type: 'STATUS_CONFIRMED', buyTxLink: 'https://explorer/tx/0xpayout' })
+
+    expect(actor.getSnapshot().context).toMatchObject({
+      txLink: 'https://explorer/tx/0xdead',
+      buyTxLink: 'https://explorer/tx/0xpayout',
+      swapperTxLink: 'https://swapper/deposit',
+    })
+
+    actor.send({ type: 'RESET' })
+    expect(actor.getSnapshot().context).toMatchObject({
+      txLink: null,
+      buyTxLink: null,
+      swapperTxLink: null,
+    })
+    actor.stop()
+  })
+
+  it('picks up a swapper link mid-swap and keeps it on failure', () => {
+    const actor = restoreInto('0xdead')
+    actor.send({ type: 'TX_LINKS_UPDATED', swapperTxLink: 'https://swapper/deposit' })
+    expect(actor.getSnapshot().matches('polling_status')).toBe(true)
+    expect(actor.getSnapshot().context.swapperTxLink).toBe('https://swapper/deposit')
+
+    actor.send({ type: 'STATUS_FAILED', error: 'Swap failed' })
+    expect(actor.getSnapshot().matches('error')).toBe(true)
+    expect(actor.getSnapshot().context.swapperTxLink).toBe('https://swapper/deposit')
+    actor.stop()
+  })
+
+  it('keeps the swapper link from a failure before the deposit was seen', () => {
+    const actor = restoreInto(undefined)
+    actor.send({
+      type: 'STATUS_FAILED',
+      error: 'Swap failed',
+      swapperTxLink: 'https://swapper/deposit',
+    })
+    expect(actor.getSnapshot().matches('error')).toBe(true)
+    expect(actor.getSnapshot().context.swapperTxLink).toBe('https://swapper/deposit')
+    actor.stop()
+  })
+
+  it('leaves a funded deposit we can no longer follow rather than spinning on it', () => {
+    const actor = restoreInto('0xdead')
+    actor.send({ type: 'TRACKING_TIMEOUT' })
+
+    const snapshot = actor.getSnapshot()
+    expect(snapshot.matches('error')).toBe(true)
+    expect(snapshot.context.errorSource).toBe('TRACKING_TIMEOUT')
+    actor.stop()
+  })
+
+  it('ignores the timeout on the screens that already offer a way forward', () => {
+    const awaiting = restoreInto(undefined)
+    awaiting.send({ type: 'TRACKING_TIMEOUT' })
+    expect(awaiting.getSnapshot().matches('awaiting_deposit')).toBe(true)
+    awaiting.stop()
+
+    const expired = restoreInto(undefined)
+    expired.send({ type: 'DEPOSIT_EXPIRED' })
+    expired.send({ type: 'TRACKING_TIMEOUT' })
+    expect(expired.getSnapshot().matches('deposit_expired')).toBe(true)
+    expired.stop()
+  })
+
+  it('drops the previous hash when a re-quote asks for a fresh deposit', () => {
+    const actor = restoreInto('0xdead')
+    actor.send({ type: 'STATUS_FAILED', error: 'Swap failed' })
+    actor.send({ type: 'RETRY' })
+
+    expect(actor.getSnapshot().matches('quoting')).toBe(true)
+    expect(actor.getSnapshot().context.txHash).toBeNull()
+
+    actor.send({ type: 'QUOTE_SUCCESS', quote: TEST_DEPOSIT_QUOTE })
+    expect(actor.getSnapshot().matches('awaiting_deposit')).toBe(true)
+    expect(actor.getSnapshot().context.txHash).toBeNull()
+    actor.stop()
   })
 })

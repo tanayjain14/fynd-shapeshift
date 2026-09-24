@@ -1,55 +1,71 @@
+import type { ChainId } from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
+import { bn } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
+import { isAddress, zeroAddress } from 'viem'
 
 import type { SwapErrorRight } from '../../../types'
 import { TradeQuoteError } from '../../../types'
 import { makeSwapErrorRight } from '../../../utils'
-import type { FyndInfoResponse, FyndOrderQuote, FyndQuoteResponse } from '../types'
+import type { FyndEncodedQuote } from '../types'
+import { FYND_CHAINS } from './constants'
 import { createFyndService } from './fyndService'
-import { convertAssetIdToFyndToken } from './helpers'
-import { validateFyndInfoResponse, validateFyndQuoteResponse } from './validation'
+import { assertValidTrade, convertAssetIdToFyndToken, isNativeFyndSell } from './helpers'
+import { isFyndAmount, validateFyndInfoResponse, validateFyndQuoteResponse } from './validation'
 
 type FetchFyndInput = {
   sellAsset: Asset
   buyAsset: Asset
+  chainId?: ChainId
   sellAmountCryptoBaseUnit: string
   sender: string
   receiver: string
   slippageTolerancePercentageDecimal: string
   baseUrl: string
-  quoteOrRate: 'quote' | 'rate'
-}
-
-const quoteStatusToError = (status: FyndOrderQuote['status']): SwapErrorRight => {
-  const code =
-    status === 'no_route_found' || status === 'insufficient_liquidity'
-      ? TradeQuoteError.NoRouteFound
-      : TradeQuoteError.QueryFailed
-  return makeSwapErrorRight({ message: `Fynd quote failed with status ${status}`, code })
 }
 
 export const fetchFromFynd = async ({
   sellAsset,
   buyAsset,
+  chainId: requestedChainId,
   sellAmountCryptoBaseUnit,
   sender,
   receiver,
   slippageTolerancePercentageDecimal,
   baseUrl,
-  quoteOrRate,
 }: FetchFyndInput): Promise<
-  Result<{ quote: FyndOrderQuote; routerAddress: string }, SwapErrorRight>
+  Result<{ quote: FyndEncodedQuote; routerAddress: string }, SwapErrorRight>
 > => {
-  const service = createFyndService({ baseUrl })
-  const maybeInfo = await service.get<FyndInfoResponse>('/info')
+  const maybeTrade = assertValidTrade({ sellAsset, buyAsset, chainId: requestedChainId })
+  if (maybeTrade.isErr()) return Err(maybeTrade.unwrapErr())
+  const chainId = maybeTrade.unwrap()
+  if (
+    !isFyndAmount(sellAmountCryptoBaseUnit) ||
+    !bn(sellAmountCryptoBaseUnit).gt(0) ||
+    !isAddress(sender) ||
+    !isAddress(receiver) ||
+    sender.toLowerCase() === zeroAddress ||
+    receiver.toLowerCase() === zeroAddress ||
+    !/^0(?:\.\d+)?$/.test(slippageTolerancePercentageDecimal)
+  ) {
+    return Err(
+      makeSwapErrorRight({
+        message: 'Invalid Fynd amount, address or slippage',
+        code: TradeQuoteError.InvalidResponse,
+      }),
+    )
+  }
+  const service = createFyndService({
+    baseUrl: `${baseUrl.replace(/\/$/, '')}/${FYND_CHAINS[chainId].name}`,
+  })
+  const maybeInfo = await service.get<unknown>('/info')
   if (maybeInfo.isErr()) return Err(maybeInfo.unwrapErr())
-
-  const maybeValidInfo = validateFyndInfoResponse(maybeInfo.unwrap().data)
+  const maybeValidInfo = validateFyndInfoResponse(maybeInfo.unwrap().data, chainId)
   if (maybeValidInfo.isErr()) return Err(maybeValidInfo.unwrapErr())
   const { router_address: routerAddress } = maybeValidInfo.unwrap()
 
-  const maybeResponse = await service.post<FyndQuoteResponse>('/quote', {
+  const maybeResponse = await service.post<unknown>('/quote', {
     orders: [
       {
         token_in: convertAssetIdToFyndToken(sellAsset.assetId),
@@ -63,20 +79,19 @@ export const fetchFromFynd = async ({
     options: {
       timeout_ms: 5_000,
       min_responses: 1,
-      ...(quoteOrRate === 'quote' && {
-        encoding_options: {
-          slippage: Number(slippageTolerancePercentageDecimal),
-          transfer_type: 'transfer_from',
-        },
-      }),
+      // The deployed API accepts a string despite its OpenAPI schema declaring a number.
+      encoding_options: {
+        slippage: slippageTolerancePercentageDecimal,
+        transfer_type: 'transfer_from',
+      },
     },
   })
-
   if (maybeResponse.isErr()) return Err(maybeResponse.unwrapErr())
-  const maybeValidResponse = validateFyndQuoteResponse(maybeResponse.unwrap().data, quoteOrRate)
-  if (maybeValidResponse.isErr()) return Err(maybeValidResponse.unwrapErr())
-  const quote = maybeValidResponse.unwrap().orders[0]
-  if (quote.status !== 'success') return Err(quoteStatusToError(quote.status))
-
-  return Ok({ quote, routerAddress })
+  const maybeQuote = validateFyndQuoteResponse(maybeResponse.unwrap().data, {
+    chainId,
+    sellAmountCryptoBaseUnit,
+    isNativeSell: isNativeFyndSell(sellAsset.assetId),
+  })
+  if (maybeQuote.isErr()) return Err(maybeQuote.unwrapErr())
+  return Ok({ quote: maybeQuote.unwrap(), routerAddress })
 }

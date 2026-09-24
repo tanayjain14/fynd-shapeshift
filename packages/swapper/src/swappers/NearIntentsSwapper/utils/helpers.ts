@@ -1,4 +1,4 @@
-import { btcChainId, fromAssetId, solanaChainId } from '@shapeshiftoss/caip'
+import { CHAIN_NAMESPACE, fromAssetId, fromChainId, solanaChainId } from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
 import { TxStatus } from '@shapeshiftoss/unchained-client'
 import { bnOrZero, DAO_TREASURY_NEAR, isToken } from '@shapeshiftoss/utils'
@@ -6,13 +6,14 @@ import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 import { zeroAddress } from 'viem'
 
-import type { SwapErrorRight } from '../../../types'
+import type { SwapErrorRight, TradeAmount } from '../../../types'
 import { TradeQuoteError } from '../../../types'
 import { createTradeAmountTooSmallErr, makeSwapErrorRight } from '../../../utils'
 import {
-  BTC_QUOTE_DEADLINE_MS,
+  APP_FEE_SPLIT_MULTIPLIER,
   DEFAULT_QUOTE_DEADLINE_MS,
   DEFAULT_SLIPPAGE_BPS,
+  UTXO_QUOTE_DEADLINE_MS,
 } from '../constants'
 import type { GetExecutionStatusResponse, QuoteResponse, TokenResponse } from '../types'
 import { chainIdToNearIntentsChain, QuoteRequest } from '../types'
@@ -178,17 +179,19 @@ export const resolveNearIntentsAssets = async ({
   }
 }
 
-// BTC deposits confirm slowly, so BTC pairs get a longer deadline
+const isUtxoChainId = (chainId: string): boolean =>
+  fromChainId(chainId).chainNamespace === CHAIN_NAMESPACE.Utxo
+
 export const getNearIntentsQuoteDeadline = ({
   sellAsset,
   buyAsset,
 }: {
-  sellAsset: Asset
-  buyAsset: Asset
+  sellAsset: Pick<Asset, 'chainId'>
+  buyAsset: Pick<Asset, 'chainId'>
 }): string => {
   const deadlineMs =
-    sellAsset.chainId === btcChainId || buyAsset.chainId === btcChainId
-      ? BTC_QUOTE_DEADLINE_MS
+    isUtxoChainId(sellAsset.chainId) || isUtxoChainId(buyAsset.chainId)
+      ? UTXO_QUOTE_DEADLINE_MS
       : DEFAULT_QUOTE_DEADLINE_MS
 
   return new Date(Date.now() + deadlineMs).toISOString()
@@ -197,7 +200,7 @@ export const getNearIntentsQuoteDeadline = ({
 export const buildNearIntentsQuoteRequest = ({
   originAsset,
   destinationAsset,
-  sellAmountCryptoBaseUnit,
+  amount,
   slippageTolerancePercentageDecimal,
   affiliateBps,
   refundTo,
@@ -208,7 +211,7 @@ export const buildNearIntentsQuoteRequest = ({
 }: {
   originAsset: string
   destinationAsset: string
-  sellAmountCryptoBaseUnit: string
+  amount: TradeAmount
   slippageTolerancePercentageDecimal: string | undefined
   affiliateBps: string
   refundTo: string
@@ -216,29 +219,34 @@ export const buildNearIntentsQuoteRequest = ({
   refundType: QuoteRequest.refundType
   recipientType: QuoteRequest.recipientType
   deadline: string
-}): QuoteRequest => ({
-  dry: false,
-  swapType: QuoteRequest.swapType.EXACT_INPUT,
-  slippageTolerance: slippageTolerancePercentageDecimal
-    ? bnOrZero(slippageTolerancePercentageDecimal).times(10000).toNumber()
-    : DEFAULT_SLIPPAGE_BPS,
-  originAsset,
-  destinationAsset,
-  amount: sellAmountCryptoBaseUnit,
-  depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
-  refundTo,
-  refundType,
-  recipient,
-  recipientType,
-  deadline,
-  referral: 'shapeshift',
-  appFees: [
-    {
-      recipient: DAO_TREASURY_NEAR,
-      fee: Number(affiliateBps),
-    },
-  ],
-})
+}): QuoteRequest => {
+  return {
+    dry: false,
+    swapType:
+      amount.direction === 'exactOut'
+        ? QuoteRequest.swapType.EXACT_OUTPUT
+        : QuoteRequest.swapType.EXACT_INPUT,
+    slippageTolerance: slippageTolerancePercentageDecimal
+      ? bnOrZero(slippageTolerancePercentageDecimal).times(10000).toNumber()
+      : DEFAULT_SLIPPAGE_BPS,
+    originAsset,
+    destinationAsset,
+    amount: amount.cryptoBaseUnit,
+    depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
+    refundTo,
+    refundType,
+    recipient,
+    recipientType,
+    deadline,
+    referral: 'shapeshift',
+    appFees: [
+      {
+        recipient: DAO_TREASURY_NEAR,
+        fee: Number(affiliateBps) * APP_FEE_SPLIT_MULTIPLIER,
+      },
+    ],
+  }
+}
 
 // One retry loop for the SDK's flaky WebSocket transport; maps provider errors to swap errors
 export const fetchNearIntentsQuote = async ({

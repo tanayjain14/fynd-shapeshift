@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { GetTradeQuoteInput, GetTradeRateInput, SwapperDeps } from '../../../types'
 import { TradeQuoteError } from '../../../types'
-import { BTC, ETH, RUNE, WETH } from '../../../utils/test-data/assets'
+import { ETH, RUNE, WETH } from '../../../utils/test-data/assets'
 import { ROUTE_QUOTE } from '../test-data/routeQuote'
 import type { BuildTxSuccessItem, RouteSuccessItem } from '../types'
 import { getButterSwapStepData } from './getButterSwapStepData'
@@ -23,6 +23,11 @@ const PROVIDER_GAS_FEE_BASE_UNIT = '1333043669759539' // 0.001333043669759539 ET
 
 const SOL: Asset = { ...ETH, assetId: `${solanaChainId}/slip44:501`, chainId: solanaChainId }
 const TRX: Asset = { ...ETH, assetId: `${tronChainId}/slip44:195`, chainId: tronChainId }
+const USDT_TRON: Asset = {
+  ...ETH,
+  assetId: `${tronChainId}/trc20:TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`,
+  chainId: tronChainId,
+}
 
 const evmBuildTx: BuildTxSuccessItem = {
   to: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
@@ -36,6 +41,7 @@ const makeDeps = (adapters: Partial<Record<string, unknown>>): SwapperDeps =>
     assertGetEvmChainAdapter: () => adapters.evm,
     assertGetUtxoChainAdapter: () => adapters.utxo,
     assertGetSolanaChainAdapter: () => adapters.solana,
+    assertGetTronChainAdapter: () => adapters.tron,
   }) as unknown as SwapperDeps
 
 const evmAdapter = ({
@@ -162,74 +168,6 @@ describe('getButterSwapStepData', () => {
     })
   })
 
-  describe('utxo', () => {
-    const utxoAdapter = {
-      getFeeData: () => Promise.resolve({ fast: { txFee: '4200' } }),
-      httpProvider: {
-        getNetworkFees: () => Promise.resolve({ fast: { satsPerKiloByte: 10000 } }),
-      },
-    }
-
-    it('estimates off the default vsize for a rate with no pubkey', async () => {
-      const actual = await getButterSwapStepData({
-        type: 'rate',
-        input: {} as GetTradeRateInput,
-        deps: makeDeps({ utxo: utxoAdapter }),
-        route,
-        sellAsset: BTC,
-        feeAsset: BTC,
-        sellAmountCryptoBaseUnit: '100000',
-        spenderAddress: '',
-      })
-
-      // 10 sats/byte * 200 vbyte default
-      expect(actual.unwrap()).toEqual({ networkFeeCryptoBaseUnit: '2000' })
-    })
-
-    it('builds transaction data with the memo as op return data for a quote', async () => {
-      const actual = await getButterSwapStepData({
-        type: 'quote',
-        input: { xpub: 'zpub6qux' } as unknown as GetTradeQuoteInput,
-        from: 'bc1qaddress',
-        buildTx: { ...evmBuildTx, to: 'bc1qbridge', memo: 'butter-memo' },
-        deps: makeDeps({ utxo: utxoAdapter }),
-        route,
-        sellAsset: BTC,
-        feeAsset: BTC,
-        sellAmountCryptoBaseUnit: '100000',
-        spenderAddress: '',
-      })
-
-      expect(actual.unwrap()).toEqual({
-        networkFeeCryptoBaseUnit: '4200',
-        transactionData: {
-          type: 'utxo',
-          to: 'bc1qbridge',
-          opReturnData: 'butter-memo',
-          value: '100000',
-        },
-      })
-    })
-
-    it('errors when the quote is missing the memo the bridge routes on', async () => {
-      const actual = await getButterSwapStepData({
-        type: 'quote',
-        input: { xpub: 'zpub6qux' } as unknown as GetTradeQuoteInput,
-        from: 'bc1qaddress',
-        buildTx: { ...evmBuildTx, to: 'bc1qbridge', memo: undefined },
-        deps: makeDeps({ utxo: utxoAdapter }),
-        route,
-        sellAsset: BTC,
-        feeAsset: BTC,
-        sellAmountCryptoBaseUnit: '100000',
-        spenderAddress: '',
-      })
-
-      expect(actual.isErr()).toBe(true)
-      expect(actual.unwrapErr().code).toBe(TradeQuoteError.InvalidResponse)
-    })
-  })
-
   describe('solana', () => {
     it('uses the provider fee for a rate, since swap instructions do not exist yet', async () => {
       const assertGetSolanaChainAdapter = vi.fn()
@@ -252,20 +190,25 @@ describe('getButterSwapStepData', () => {
   })
 
   describe('tron', () => {
-    it('returns legacy metadata rather than transaction data, since exec still builds from it', async () => {
-      const buildTx: BuildTxSuccessItem = {
-        ...evmBuildTx,
-        to: 'TRouterAddress',
-        method: 'swapAndCall',
-        args: [{ type: 'address', value: 'TSpender' }],
-      }
+    const tronBuildTx: BuildTxSuccessItem = { ...evmBuildTx, to: 'TRouterAddress' }
+    const tronAdapter = ({ txFee = '9000000', allowance = '0' } = {}) => ({
+      getFeeData: vi.fn().mockResolvedValue({ fast: { txFee } }),
+      httpProvider: {
+        getChainPrices: () => Promise.resolve({ energyPrice: 100, bandwidthPrice: 1000 }),
+        getTrc20Allowance: vi.fn().mockResolvedValue(allowance),
+        getTrc20Balance: vi.fn().mockResolvedValue('100000000'),
+      },
+    })
+
+    it('carries the router call as transactionData and simulates it', async () => {
+      const adapter = tronAdapter()
 
       const actual = await getButterSwapStepData({
         type: 'quote',
         input: {} as GetTradeQuoteInput,
         from: 'TSenderAddress',
-        buildTx,
-        deps: {} as SwapperDeps,
+        buildTx: tronBuildTx,
+        deps: makeDeps({ tron: adapter }),
         route,
         sellAsset: TRX,
         feeAsset: TRX,
@@ -273,17 +216,93 @@ describe('getButterSwapStepData', () => {
         spenderAddress: '',
       })
 
-      expect(actual.unwrap()).toEqual({
-        networkFeeCryptoBaseUnit: PROVIDER_GAS_FEE_BASE_UNIT,
-        butterSwapTransactionMetadata: {
-          to: 'TRouterAddress',
-          data: evmBuildTx.data,
-          value: evmBuildTx.value,
-          method: 'swapAndCall',
-          args: [{ type: 'address', value: 'TSpender' }],
-          memo: undefined,
-        },
+      // Butter's value is the native amount to send: the sell amount for a native sell, 0 for a token
+      const transactionData = {
+        type: 'tron',
+        to: 'TRouterAddress',
+        data: evmBuildTx.data,
+        value: '100000000000000000',
+      }
+
+      expect(actual.unwrap()).toEqual({ transactionData, networkFeeCryptoBaseUnit: '9000000' })
+      expect(adapter.getFeeData).toHaveBeenCalledWith({
+        to: 'TRouterAddress',
+        value: '100000000000000000',
+        chainSpecific: { from: 'TSenderAddress', data: evmBuildTx.data },
       })
+    })
+
+    it('uses the provider value for a token sell', async () => {
+      const actual = await getButterSwapStepData({
+        type: 'quote',
+        input: {} as GetTradeQuoteInput,
+        from: 'TSenderAddress',
+        buildTx: { ...tronBuildTx, value: '0x00' },
+        deps: makeDeps({ tron: tronAdapter() }),
+        route,
+        sellAsset: USDT_TRON,
+        feeAsset: TRX,
+        sellAmountCryptoBaseUnit: '1000000',
+        spenderAddress: '',
+      })
+
+      expect(actual.unwrap().transactionData).toMatchObject({ value: '0' })
+    })
+
+    it('fails a native quote when the simulation fails', async () => {
+      const adapter = tronAdapter()
+      adapter.getFeeData.mockRejectedValue(new Error('REVERT opcode executed'))
+
+      const actual = await getButterSwapStepData({
+        type: 'quote',
+        input: {} as GetTradeQuoteInput,
+        from: 'TSenderAddress',
+        buildTx: tronBuildTx,
+        deps: makeDeps({ tron: adapter }),
+        route,
+        sellAsset: TRX,
+        feeAsset: TRX,
+        sellAmountCryptoBaseUnit: '1000000',
+        spenderAddress: '',
+      })
+
+      expect(actual.isErr()).toBe(true)
+    })
+
+    it('prices the measured worst case when a token allowance is not granted yet', async () => {
+      const adapter = tronAdapter({ allowance: '0' })
+      adapter.getFeeData.mockRejectedValue(new Error('REVERT opcode executed'))
+
+      const actual = await getButterSwapStepData({
+        type: 'quote',
+        input: {} as GetTradeQuoteInput,
+        from: 'TSenderAddress',
+        buildTx: { ...tronBuildTx, value: '0x00' },
+        deps: makeDeps({ tron: adapter }),
+        route,
+        sellAsset: USDT_TRON,
+        feeAsset: TRX,
+        sellAmountCryptoBaseUnit: '1000000',
+        spenderAddress: '',
+      })
+
+      // 390000 energy * 1.2 margin * 100 sun + (4 calldata + 279 envelope) bytes * 1000 sun
+      expect(actual.unwrap().networkFeeCryptoBaseUnit).toBe('47083000')
+    })
+
+    it('rates price the provider fee', async () => {
+      const actual = await getButterSwapStepData({
+        type: 'rate',
+        input: {} as GetTradeRateInput,
+        deps: makeDeps({ tron: tronAdapter() }),
+        route,
+        sellAsset: TRX,
+        feeAsset: TRX,
+        sellAmountCryptoBaseUnit: '1000000',
+        spenderAddress: '',
+      })
+
+      expect(actual.unwrap()).toEqual({ networkFeeCryptoBaseUnit: PROVIDER_GAS_FEE_BASE_UNIT })
     })
   })
 

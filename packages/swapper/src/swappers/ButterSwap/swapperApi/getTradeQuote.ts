@@ -7,6 +7,7 @@ import { getDefaultSlippageDecimalPercentageForSwapper } from '../../../constant
 import type { SwapErrorRight, SwapperDeps, TradeQuote } from '../../../types'
 import { SwapperName, TradeQuoteError } from '../../../types'
 import { assertQuoteAddresses, makeSwapErrorRight } from '../../../utils'
+import { FALLBACK_QUOTE_DEADLINE_MS } from '../../../utils/helpers'
 import type { ButterSwapTradeQuoteInput } from '../types'
 import { getButterSwapStepData } from '../utils/getButterSwapStepData'
 import { getButterSwapTradeContext } from '../utils/getButterSwapTradeContext'
@@ -76,22 +77,21 @@ export const getTradeQuote = async (
   })
 
   if (maybeStepData.isErr()) return Err(maybeStepData.unwrapErr())
-  const { networkFeeCryptoBaseUnit, transactionData, butterSwapTransactionMetadata } =
-    maybeStepData.unwrap()
+  const { networkFeeCryptoBaseUnit, transactionData } = maybeStepData.unwrap()
 
   const tradeQuote: TradeQuote = {
     ...tradeCommon,
     quoteOrRate: 'quote' as const,
+    deadline: Date.now() + FALLBACK_QUOTE_DEADLINE_MS,
     receiveAddress,
     steps: [
       {
         ...stepCommon,
         accountNumber,
-        // Tron exec still builds from legacy metadata whose spender is the buildTx target
+        // Tron routes pull the sell token from the buildTx target
         allowanceContract:
           sellAsset.chainId === tronChainId ? buildTx.to : stepCommon.allowanceContract,
         transactionData,
-        butterSwapTransactionMetadata,
         feeData: { networkFeeCryptoBaseUnit, protocolFees },
       },
     ],

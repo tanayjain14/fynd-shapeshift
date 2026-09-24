@@ -40,6 +40,7 @@ export const clearPortfolioMigrations = {
   3: clearPortfolio,
   4: clearPortfolio,
   5: clearPortfolio,
+  6: clearPortfolio,
 } as unknown as Omit<MigrationManifest, '_persist'>
 
 export const localWalletMigrations = {
@@ -401,6 +402,17 @@ export const clearAssetsMigrations = {
   350: clearAssets,
   351: clearAssets,
   352: clearAssets,
+  353: clearAssets,
+  354: clearAssets,
+  355: clearAssets,
+  356: clearAssets,
+  357: clearAssets,
+  358: clearAssets,
+  359: clearAssets,
+  360: clearAssets,
+  361: clearAssets,
+  362: clearAssets,
+  363: clearAssets,
 } as unknown as Omit<MigrationManifest, '_persist'>
 
 export const clearMarketDataMigrations = {

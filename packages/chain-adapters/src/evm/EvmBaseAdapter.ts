@@ -36,6 +36,7 @@ import {
   supportsPlasma,
   supportsPlume,
   supportsPolygon,
+  supportsRobinhood,
   supportsScroll,
   supportsSei,
   supportsSoneium,
@@ -135,6 +136,7 @@ export const evmChainIds = [
   KnownChainIds.SoneiumMainnet,
   KnownChainIds.SeiMainnet,
   KnownChainIds.AbstractMainnet,
+  KnownChainIds.RobinhoodMainnet,
 ] as const
 
 export type EvmChainAdapter = EvmBaseAdapter<EvmChainId>
@@ -283,6 +285,8 @@ export abstract class EvmBaseAdapter<T extends EvmChainId> implements IChainAdap
           return supportsSoneium(wallet)
         case Number(fromChainId(KnownChainIds.SeiMainnet).chainReference):
           return supportsSei(wallet)
+        case Number(fromChainId(KnownChainIds.RobinhoodMainnet).chainReference):
+          return supportsRobinhood(wallet)
         default:
           return false
       }
@@ -490,6 +494,11 @@ export abstract class EvmBaseAdapter<T extends EvmChainId> implements IChainAdap
         symbol: 'ETH',
         explorer: 'https://abscan.org',
       },
+      [KnownChainIds.RobinhoodMainnet]: {
+        name: 'Ethereum',
+        symbol: 'ETH',
+        explorer: 'https://robinhoodchain.blockscout.com',
+      },
     }[this.chainId]
 
     try {
@@ -621,6 +630,8 @@ export abstract class EvmBaseAdapter<T extends EvmChainId> implements IChainAdap
           tokens: [],
         },
         pubkey,
+        // The node only gives us the native balance - token balances are missing entirely
+        isDegraded: true,
       } as Account<T>
     } catch (err) {
       return ErrorHandler(err, {

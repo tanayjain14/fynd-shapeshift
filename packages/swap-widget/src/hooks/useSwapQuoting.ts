@@ -4,6 +4,7 @@ import type { ApiClient } from '../api/client'
 import { useSwapWallet } from '../contexts/SwapWalletContext'
 import { SwapMachineCtx } from '../machines/SwapMachineContext'
 import type { TradeRate } from '../types'
+import { pickDepositRate } from '../utils/depositFlow'
 
 type BalanceData =
   | {
@@ -29,14 +30,26 @@ export const useSwapQuoting = ({ apiClient, rates, sellAssetBalance }: UseSwapQu
 
   useEffect(() => {
     const snap = actorRef.getSnapshot()
+
     if (!snap.matches('quoting') || quotingRef.current) return
+
     quotingRef.current = true
 
     const fetchQuote = async () => {
       try {
-        if (sellAssetBalance?.balance && context.sellAmountBaseUnit) {
+        const isExactOutput = !!context.buyAmountBaseUnit
+        const rateToUse =
+          context.selectedRate ??
+          (context.isDepositFlow ? pickDepositRate(rates, context.quote?.swapperName) : rates?.[0])
+
+        const sellAmountBaseUnit = isExactOutput
+          ? rateToUse?.sellAmountCryptoBaseUnit
+          : context.sellAmountBaseUnit
+
+        if (sellAssetBalance?.balance && sellAmountBaseUnit) {
           const balanceBigInt = BigInt(sellAssetBalance.balance)
-          const amountBigInt = BigInt(context.sellAmountBaseUnit)
+          const amountBigInt = BigInt(sellAmountBaseUnit)
+
           if (amountBigInt > balanceBigInt) {
             actorRef.send({ type: 'QUOTE_ERROR', error: 'Insufficient balance' })
             return
@@ -45,34 +58,45 @@ export const useSwapQuoting = ({ apiClient, rates, sellAssetBalance }: UseSwapQu
 
         const parsedSlippage = parseFloat(context.slippage)
         if (isNaN(parsedSlippage) || parsedSlippage < 0) {
-          actorRef.send({ type: 'QUOTE_ERROR', error: 'Invalid slippage value' })
+          actorRef.send({ type: 'QUOTE_ERROR', error: 'Check your slippage setting' })
           return
         }
+
         const slippageDecimal = (parsedSlippage / 100).toString()
-        const rateToUse = context.selectedRate ?? rates?.[0]
-        if (!rateToUse || !context.sellAmountBaseUnit) {
-          actorRef.send({ type: 'QUOTE_ERROR', error: 'No rate or amount available' })
+
+        const amountBaseUnit = isExactOutput
+          ? context.buyAmountBaseUnit
+          : context.sellAmountBaseUnit
+
+        if (!rateToUse || !amountBaseUnit) {
+          actorRef.send({
+            type: 'QUOTE_ERROR',
+            error: 'Could not build a quote — please try again',
+          })
           return
         }
 
         if (!sendAddress) {
-          actorRef.send({ type: 'QUOTE_ERROR', error: 'No wallet address available' })
+          actorRef.send({
+            type: 'QUOTE_ERROR',
+            error: context.isDepositFlow ? 'Enter a refund address' : 'No wallet connected',
+          })
           return
         }
 
-        const resolvedReceiveAddress = receiveAddress || sendAddress
-
-        if (!resolvedReceiveAddress) {
-          actorRef.send({ type: 'QUOTE_ERROR', error: 'No receive address available' })
+        if (!receiveAddress) {
+          actorRef.send({ type: 'QUOTE_ERROR', error: 'Enter a receive address' })
           return
         }
 
         const response = await apiClient.getQuote({
           sellAssetId: context.sellAsset.assetId,
           buyAssetId: context.buyAsset.assetId,
-          sellAmountCryptoBaseUnit: context.sellAmountBaseUnit,
+          ...(isExactOutput
+            ? { buyAmountCryptoBaseUnit: amountBaseUnit }
+            : { sellAmountCryptoBaseUnit: amountBaseUnit }),
           sendAddress,
-          receiveAddress: resolvedReceiveAddress,
+          receiveAddress,
           swapperName: rateToUse.swapperName,
           slippageTolerancePercentageDecimal: slippageDecimal,
         })
@@ -87,6 +111,6 @@ export const useSwapQuoting = ({ apiClient, rates, sellAssetBalance }: UseSwapQu
     }
 
     fetchQuote()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stateValue is the sole trigger; other deps are stable refs read from snapshot
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stateValue is the sole trigger; the rest are read from the render that entered quoting
   }, [stateValue])
 }

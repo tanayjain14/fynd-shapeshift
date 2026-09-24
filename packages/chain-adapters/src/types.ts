@@ -71,6 +71,8 @@ type ChainSpecificAccount<T> = ChainSpecific<
     [KnownChainIds.SoneiumMainnet]: evm.Account
     [KnownChainIds.SeiMainnet]: evm.Account
     [KnownChainIds.AbstractMainnet]: evm.Account
+    [KnownChainIds.RobinhoodMainnet]: evm.Account
+
     [KnownChainIds.BitcoinMainnet]: utxo.Account
     [KnownChainIds.BitcoinCashMainnet]: utxo.Account
     [KnownChainIds.DogecoinMainnet]: utxo.Account
@@ -94,6 +96,8 @@ export type Account<T extends ChainId> = {
   chainId: string
   assetId: string
   chain: T
+  /** Sourced from a degraded path and known to be incomplete */
+  isDegraded?: boolean
 } & ChainSpecificAccount<T>
 
 export type AssetBalance = {
@@ -145,6 +149,8 @@ type ChainSpecificFeeData<T> = ChainSpecific<
     [KnownChainIds.SoneiumMainnet]: evm.FeeData
     [KnownChainIds.SeiMainnet]: evm.FeeData
     [KnownChainIds.AbstractMainnet]: evm.FeeData
+    [KnownChainIds.RobinhoodMainnet]: evm.FeeData
+
     [KnownChainIds.BitcoinMainnet]: utxo.FeeData
     [KnownChainIds.BitcoinCashMainnet]: utxo.FeeData
     [KnownChainIds.DogecoinMainnet]: utxo.FeeData
@@ -252,6 +258,8 @@ export type ChainSignTx = {
   [KnownChainIds.SoneiumMainnet]: ETHSignTx
   [KnownChainIds.SeiMainnet]: ETHSignTx
   [KnownChainIds.AbstractMainnet]: ETHSignTx
+  [KnownChainIds.RobinhoodMainnet]: ETHSignTx
+
   [KnownChainIds.BitcoinMainnet]: BTCSignTx
   [KnownChainIds.BitcoinCashMainnet]: BTCSignTx
   [KnownChainIds.DogecoinMainnet]: BTCSignTx
@@ -331,6 +339,8 @@ export type ChainSpecificBuildTxData<T> = ChainSpecific<
     [KnownChainIds.SoneiumMainnet]: evm.BuildTxInput
     [KnownChainIds.SeiMainnet]: evm.BuildTxInput
     [KnownChainIds.AbstractMainnet]: evm.BuildTxInput
+    [KnownChainIds.RobinhoodMainnet]: evm.BuildTxInput
+
     [KnownChainIds.BitcoinMainnet]: utxo.BuildTxInput
     [KnownChainIds.BitcoinCashMainnet]: utxo.BuildTxInput
     [KnownChainIds.DogecoinMainnet]: utxo.BuildTxInput
@@ -460,6 +470,8 @@ type ChainSpecificGetFeeDataInput<T> = ChainSpecific<
     [KnownChainIds.SoneiumMainnet]: evm.GetFeeDataInput
     [KnownChainIds.SeiMainnet]: evm.GetFeeDataInput
     [KnownChainIds.AbstractMainnet]: evm.GetFeeDataInput
+    [KnownChainIds.RobinhoodMainnet]: evm.GetFeeDataInput
+
     [KnownChainIds.BitcoinMainnet]: utxo.GetFeeDataInput
     [KnownChainIds.BitcoinCashMainnet]: utxo.GetFeeDataInput
     [KnownChainIds.DogecoinMainnet]: utxo.GetFeeDataInput
@@ -566,6 +578,7 @@ export enum ChainAdapterDisplayName {
   Starknet = 'Starknet',
   Ton = 'TON',
   Abstract = 'Abstract',
+  Robinhood = 'Robinhood',
 }
 
 export type BroadcastTransactionInput = {

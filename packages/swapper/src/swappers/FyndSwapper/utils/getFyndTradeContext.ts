@@ -11,13 +11,9 @@ import type {
   TradeStepCommon,
 } from '../../../types'
 import { SwapperName } from '../../../types'
-import type { FyndOrderQuote, FyndTradeQuoteInput, FyndTradeRateInput } from '../types'
-import {
-  calculateFyndAmounts,
-  calculateFyndRate,
-  calculateFyndRouterFee,
-  isNativeFyndSell,
-} from './helpers'
+import { getInputOutputRate } from '../../../utils'
+import type { FyndEncodedQuote, FyndTradeQuoteInput, FyndTradeRateInput } from '../types'
+import { calculateFyndAmounts, isNativeFyndSell } from './helpers'
 
 type FyndTradeContext = {
   tradeCommon: TradeCommon
@@ -32,18 +28,22 @@ export const getFyndTradeContext = ({
   slippageTolerancePercentageDecimal,
 }: {
   input: FyndTradeQuoteInput | FyndTradeRateInput
-  quote: FyndOrderQuote
+  quote: FyndEncodedQuote
   routerAddress: string
   slippageTolerancePercentageDecimal: string
 }): Result<FyndTradeContext, SwapErrorRight> => {
   const { sellAsset, buyAsset, sellAmountIncludingProtocolFeesCryptoBaseUnit } = input
-  const routerFee = quote.fee_breakdown?.router_fee ?? calculateFyndRouterFee(quote.amount_out)
-  const clientFee = quote.fee_breakdown?.client_fee ?? '0'
+  const routerFee = quote.fee_breakdown.router_fee
+  const clientFee = quote.fee_breakdown.client_fee
   const { buyAmountBeforeFeesCryptoBaseUnit, buyAmountAfterFeesCryptoBaseUnit } =
-    calculateFyndAmounts({ amountOut: quote.amount_out, routerFee, clientFee })
-  const rate = calculateFyndRate({
-    sellAmount: quote.amount_in,
-    buyAmount: buyAmountAfterFeesCryptoBaseUnit,
+    calculateFyndAmounts({
+      amountOut: quote.amount_out,
+      routerFee,
+      clientFee,
+    })
+  const rate = getInputOutputRate({
+    sellAmountCryptoBaseUnit: quote.amount_in,
+    buyAmountCryptoBaseUnit: buyAmountAfterFeesCryptoBaseUnit,
     sellAsset,
     buyAsset,
   })
@@ -67,7 +67,7 @@ export const getFyndTradeContext = ({
       affiliateBps: '0',
       slippageTolerancePercentageDecimal,
       priceImpactPercentageDecimal:
-        quote.price_impact_bps === null
+        quote.price_impact_bps == null
           ? undefined
           : bn(quote.price_impact_bps).div(10_000).toFixed(),
     },

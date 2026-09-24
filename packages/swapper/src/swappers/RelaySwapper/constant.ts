@@ -27,6 +27,7 @@ import {
   plasmaChainId,
   plumeChainId,
   polygonChainId,
+  robinhoodChainId,
   scrollChainId,
   seiChainId,
   solanaChainId,
@@ -41,6 +42,7 @@ import {
 import invert from 'lodash/invert'
 import { zeroAddress } from 'viem'
 import {
+  abstract,
   arbitrum,
   avalanche,
   base,
@@ -59,17 +61,20 @@ import {
   linea,
   mainnet as ethereum,
   mantle,
+  megaeth,
   mode,
   monad,
   optimism,
   plasma,
   plumeMainnet,
   polygon,
+  robinhood,
   scroll,
   sei,
   soneium,
   sonic,
   story,
+  tron,
   unichain,
   worldchain,
   zksync,
@@ -90,12 +95,12 @@ export const chainIdToRelayChainId = {
   [gnosisChainId]: gnosis.id,
   [avalancheChainId]: avalanche.id,
   [bscChainId]: bsc.id,
-  [tronChainId]: 728126428,
+  [tronChainId]: tron.id,
   [monadChainId]: monad.id,
   [hyperEvmChainId]: hyperEvm.id,
   [mantleChainId]: mantle.id,
   [inkChainId]: ink.id,
-  [megaethChainId]: 4326,
+  [megaethChainId]: megaeth.id,
   [plasmaChainId]: plasma.id,
   [katanaChainId]: katana.id,
   [etherealChainId]: 5064014,
@@ -117,7 +122,8 @@ export const chainIdToRelayChainId = {
   [modeChainId]: mode.id,
   [soneiumChainId]: soneium.id,
   [seiChainId]: sei.id,
-  [abstractChainId]: 2741,
+  [abstractChainId]: abstract.id,
+  [robinhoodChainId]: robinhood.id,
 }
 
 export enum RelayStatusMessage {
@@ -133,9 +139,11 @@ export const relayChainIdToChainId = invert(chainIdToRelayChainId)
 export const DEFAULT_RELAY_EVM_TOKEN_ADDRESS = zeroAddress
 export const RELAY_BTC_TOKEN_ADDRESS = 'bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8'
 export const RELAY_SOLANA_TOKEN_ADDRESS = '11111111111111111111111111111111'
-export const RELAY_TRON_TOKEN_ADDRESS = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb'
 
 export const DEFAULT_RELAY_EVM_USER_ADDRESS = '0x000000000000000000000000000000000000dead'
+
+// depositor energy for a TRC20 deposit measured on mainnet, for token quotes without their allowance
+export const RELAY_TRON_FALLBACK_DEPOSIT_ENERGY = '100000'
 export const DEFAULT_RELAY_BTC_USER_ADDRESS = 'bc1q4vxn43l44h30nkluqfxd9eckf45vr2awz38lwa'
 export const DEFAULT_RELAY_SOLANA_USER_ADDRESS = 'CbKGgVKLJFb8bBrf58DnAkdryX6ubewVytn7X957YwNr'
 export const DEFAULT_RELAY_TRON_USER_ADDRESS = 'TLsV52sRDL79HXGGm9yzwKibb6BeruhUzy'

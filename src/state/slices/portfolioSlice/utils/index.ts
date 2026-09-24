@@ -39,6 +39,7 @@ import {
   optimismChainId,
   plasmaChainId,
   polygonChainId,
+  robinhoodChainId,
   scrollChainId,
   seiChainId,
   solanaChainId,
@@ -92,6 +93,7 @@ import {
   supportsOptimism,
   supportsPlasma,
   supportsPolygon,
+  supportsRobinhood,
   supportsScroll,
   supportsSei,
   supportsSolana,
@@ -126,7 +128,7 @@ import { fetchPortalsAccount, fetchPortalsPlatforms, maybeTokenImage } from '@/l
 import { assertUnreachable, isNativeHDWallet, isTrezorHDWallet, middleEllipsis } from '@/lib/utils'
 import { supportsNear } from '@/lib/utils/near'
 import { supportsTon } from '@/lib/utils/ton'
-import { isSpammyNftText, isSpammyTokenText } from '@/state/blacklist'
+import { isBlacklistedAssetId, isSpammyNftText, isSpammyTokenText } from '@/state/blacklist'
 import type { ReduxState } from '@/state/reducer'
 import type { UpsertAssetsPayload } from '@/state/slices/assetsSlice/assetsSlice'
 
@@ -168,6 +170,7 @@ export const accountIdToLabel = (accountId: AccountId): string => {
     case celoChainId:
     case monadChainId:
     case plasmaChainId:
+    case robinhoodChainId:
     case thorchainChainId:
     case mayachainChainId:
     case cosmosChainId:
@@ -256,7 +259,12 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        // Explicit boolean - upsertPortfolio deep merges, so undefined would never clear a stale true
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -264,6 +272,7 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
           // don't update portfolio if asset is not in the store except for nft assets,
           // nft assets will be dynamically upserted based on the state of the txHistory slice after the portfolio is loaded
           if (!isNft(token.assetId) && !assetIds.includes(token.assetId)) return
+          if (isBlacklistedAssetId(token.assetId)) return
 
           if (isNft(token.assetId)) {
             if ([token.name, token.symbol].some(nftText => isSpammyNftText(nftText, true))) return
@@ -284,7 +293,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = `${chainId}:${pubkey}`
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: balance }
 
@@ -296,7 +309,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: _xpubOrAccount })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -317,7 +334,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -339,7 +360,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -361,7 +386,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -383,7 +412,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -404,7 +437,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -426,7 +463,11 @@ export const accountToPortfolio: AccountToPortfolio = ({ assetIds, portfolioAcco
         const accountId = toAccountId({ chainId, account: pubkey })
 
         portfolio.accounts.ids.push(accountId)
-        portfolio.accounts.byId[accountId] = { assetIds: [assetId], hasActivity }
+        portfolio.accounts.byId[accountId] = {
+          assetIds: [assetId],
+          hasActivity,
+          isDegraded: Boolean(account.isDegraded),
+        }
         portfolio.accountBalances.ids.push(accountId)
         portfolio.accountBalances.byId[accountId] = { [assetId]: account.balance }
 
@@ -625,6 +666,8 @@ export const isAssetSupportedByWallet = (assetId: AssetId, wallet: HDWallet): bo
       return supportsNear(wallet)
     case tonChainId:
       return supportsTon(wallet)
+    case robinhoodChainId:
+      return supportsRobinhood(wallet)
     default:
       return false
   }
@@ -701,7 +744,8 @@ export const makeAssets = async ({
           return isSpammyTokenText(text)
         })
 
-        if (state.assets.byId[token.assetId] || isSpam) return prev
+        if (state.assets.byId[token.assetId] || isSpam || isBlacklistedAssetId(token.assetId))
+          return prev
 
         const minimalAsset: MinimalAsset = token
 

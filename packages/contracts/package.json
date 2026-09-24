@@ -1,6 +1,6 @@
 {
   "name": "@shapeshiftoss/contracts",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "repository": "https://github.com/shapeshift/web",
   "license": "MIT",
   "type": "module",
@@ -36,7 +36,7 @@
     "ethers": "6.11.1",
     "ethers5": "npm:ethers@5.7.2",
     "lodash": "^4.17.23",
-    "viem": "2.43.5"
+    "viem": "2.55.11"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.178"

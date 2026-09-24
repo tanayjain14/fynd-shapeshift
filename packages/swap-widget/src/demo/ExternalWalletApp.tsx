@@ -22,15 +22,18 @@ import { createAppKit, useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { BitcoinAdapter } from '@reown/appkit-adapter-bitcoin'
 import { SolanaAdapter } from '@reown/appkit-adapter-solana/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { SwapWidget } from '../components/SwapWidget'
 import { truncateAddress } from '../types'
 import { DemoCustomizer, useDemoTheme } from './DemoCustomizer'
+import { useIntegratorParams } from './useIntegratorParams'
 import { WidgetModal } from './WidgetModal'
 
 const PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
+const API_BASE_URL = import.meta.env.VITE_SWAP_WIDGET_API_URL
 
 if (!PROJECT_ID) throw new Error('VITE_WALLETCONNECT_PROJECT_ID is not set')
 
@@ -91,6 +94,8 @@ const ExternalDemoBody = ({ theme, setTheme }: ExternalDemoBodyProps) => {
   const themeState = useDemoTheme(theme)
   const { themeConfig, partnerCode, demoStyle, displayMode } = themeState
 
+  const { isReady: areIntegratorAssetsReady, props: integratorProps } = useIntegratorParams()
+
   const handleSwapSuccess = useCallback((txHash: string) => {
     console.log('Swap successful:', txHash)
   }, [])
@@ -102,15 +107,17 @@ const ExternalDemoBody = ({ theme, setTheme }: ExternalDemoBodyProps) => {
   const widget = useMemo(
     () => (
       <SwapWidget
+        apiBaseUrl={API_BASE_URL}
         partnerCode={partnerCode || undefined}
         theme={themeConfig}
         onSwapSuccess={handleSwapSuccess}
         onSwapError={handleSwapError}
         showPoweredBy={true}
         showConnectButton={false}
+        {...integratorProps}
       />
     ),
-    [partnerCode, themeConfig, handleSwapSuccess, handleSwapError],
+    [partnerCode, themeConfig, handleSwapSuccess, handleSwapError, integratorProps],
   )
 
   return (
@@ -182,7 +189,11 @@ const ExternalDemoBody = ({ theme, setTheme }: ExternalDemoBodyProps) => {
                 displayMode === 'modal' ? ' demo-widget-container-modal' : ''
               }`}
             >
-              {displayMode === 'modal' ? <WidgetModal>{widget}</WidgetModal> : widget}
+              {!areIntegratorAssetsReady ? null : displayMode === 'modal' ? (
+                <WidgetModal>{widget}</WidgetModal>
+              ) : (
+                widget
+              )}
             </div>
           </div>
         </div>

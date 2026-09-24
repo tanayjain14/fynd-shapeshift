@@ -46,14 +46,12 @@ import type { InterpolationOptions } from 'node-polyglot'
 import type { AvnuMetadata } from './swappers/AvnuSwapper/types'
 import type { BebopMetadata } from './swappers/BebopSwapper/types'
 import type { BobGatewayMetadata } from './swappers/BobGatewaySwapper/types'
-import type { ButterSwapTransactionMetadata } from './swappers/ButterSwap/types'
 import type { ChainflipMetadata } from './swappers/ChainflipSwapper/types'
 import type { CowMessageToSign } from './swappers/CowSwapper/types'
 import type { DebridgeMetadata } from './swappers/DebridgeSwapper/utils/types'
 import type { NearIntentsMetadata } from './swappers/NearIntentsSwapper/types'
-import type { RelayMetadata, RelayTransactionMetadata } from './swappers/RelaySwapper/utils/types'
+import type { RelayMetadata } from './swappers/RelaySwapper/utils/types'
 import type { StonfiMetadata, StonfiTransactionData } from './swappers/StonfiSwapper/types'
-import type { SunioTransactionData } from './swappers/SunioSwapper/types'
 import type { makeSwapperAxiosServiceMonadic } from './utils'
 import type { MayachainMetadata, ThorchainMetadata } from './utils/thorchain/types'
 
@@ -81,16 +79,18 @@ export type SwapperConfig = {
   VITE_COWSWAP_BASE_URL: string
   VITE_PORTALS_BASE_URL: string
   VITE_ZRX_BASE_URL: string
-  VITE_FYND_ETHEREUM_BASE_URL: string
+  VITE_FYND_BASE_URL: string
   VITE_CHAINFLIP_API_KEY: string
   VITE_CHAINFLIP_API_URL: string
   VITE_FEATURE_CHAINFLIP_SWAP_DCA: boolean
   VITE_RELAY_API_URL: string
+  VITE_RELAY_API_KEY: string
   VITE_BEBOP_API_KEY: string
   VITE_NEAR_INTENTS_API_KEY: string
   VITE_SUI_NODE_URL: string
   VITE_ACROSS_API_URL: string
   VITE_ACROSS_INTEGRATOR_ID: string
+  VITE_ACROSS_API_KEY: string
   VITE_DEBRIDGE_API_URL: string
   VITE_BOB_GATEWAY_API_KEY: string
 }
@@ -137,6 +137,8 @@ export enum TradeQuoteError {
   UnsupportedChain = 'UnsupportedChain',
   // the swapper can't swap across chains
   CrossChainNotSupported = 'CrossChainNotSupported',
+  // the swapper can quote this pair, but can't derive a sell amount from an exact buy amount
+  ExactOutputNotSupported = 'ExactOutputNotSupported',
   // the swapper wasn't able to get a network fee estimate
   NetworkFeeEstimationFailed = 'NetworkFeeEstimationFailed',
   // trading has been halted upstream
@@ -317,14 +319,31 @@ export type GetTradeRateInput =
   | GetStarknetTradeRateInput
   | GetSuiTradeRateInput
 
+export type WithExactBuyAmount<
+  T extends { sellAmountIncludingProtocolFeesCryptoBaseUnit: string },
+> = T extends unknown
+  ? Omit<T, 'sellAmountIncludingProtocolFeesCryptoBaseUnit'> & { buyAmountCryptoBaseUnit: string }
+  : never
+
+export type GetExactOutputTradeQuoteInput = WithExactBuyAmount<GetTradeQuoteInput>
+export type GetExactOutputTradeRateInput = WithExactBuyAmount<GetTradeRateInput>
+
+export type TradeAmount = {
+  direction: 'exactIn' | 'exactOut'
+  cryptoBaseUnit: string
+}
+
 type StepDataBaseArgs = {
   deps: SwapperDeps
   sellAsset: Asset
 }
 
+type StepDataRateInput = GetTradeRateInput | GetExactOutputTradeRateInput
+type StepDataQuoteInput = GetTradeQuoteInput | GetExactOutputTradeQuoteInput
+
 export type StepDataArgs<Base, Rate = unknown, Quote = unknown> =
-  | (StepDataBaseArgs & Base & { type: 'rate'; input: GetTradeRateInput; from?: string } & Rate)
-  | (StepDataBaseArgs & Base & { type: 'quote'; input: GetTradeQuoteInput; from: string } & Quote)
+  | (StepDataBaseArgs & Base & { type: 'rate'; input: StepDataRateInput; from?: string } & Rate)
+  | (StepDataBaseArgs & Base & { type: 'quote'; input: StepDataQuoteInput; from: string } & Quote)
 
 export type EvmSwapperDeps = {
   assertGetEvmChainAdapter: (chainId: ChainId) => EvmChainAdapter
@@ -411,7 +430,7 @@ export type TxBuildData =
     }
   | { type: 'cosmossdk_msg_deposit'; chainId: string; value: string; memo: string; coin: string }
   | { type: 'ton'; message: Uint8Array; seqno?: number; expireAt?: number }
-  | { type: 'tron'; to: string; data: string; value: string }
+  | { type: 'tron'; to: string; value: string; data?: string; memo?: string }
   // CowSwap signs an off-chain EIP-712 order and posts it to the CoW API - there is nothing to broadcast
   | { type: 'cowswap'; chainId: ChainId; orderToSign: Omit<OrderCreation, 'signature'> }
 
@@ -433,10 +452,6 @@ export type TradeStepCommon = {
 
   // To be collapsed into transactionData and swapperMetadata
   stonfiTransactionData?: StonfiTransactionData
-  sunioTransactionData?: SunioTransactionData
-
-  relayTransactionMetadata?: RelayTransactionMetadata
-  butterSwapTransactionMetadata?: ButterSwapTransactionMetadata
 
   chainflipSpecific?: { depositAddress?: string }
 
@@ -464,6 +479,7 @@ export type TradeCommon = {
   slippageTolerancePercentageDecimal: string | undefined // undefined if slippage limit is not provided or specified by the swapper
   isLongtail?: boolean
   swapperName: SwapperName // The swapper that generated this quote/rate
+  isExactOutput?: boolean
 }
 
 type TradeQuoteBase = TradeCommon & {
@@ -585,6 +601,8 @@ export type TradeQuote = TradeQuoteBase & {
 } & {
   quoteOrRate: 'quote'
   receiveAddress: string
+  // Epoch ms after which the quote is no longer safe to execute (provider expiry or fallback)
+  deadline: number
 }
 
 export type MultiHopTradeQuote = TradeQuote & {
@@ -611,6 +629,12 @@ export type EvmMessageExecutionProps = {
 
 export type UtxoTransactionExecutionProps = {
   signAndBroadcastTransaction: (txToSign: SignTx<UtxoChainId>) => Promise<string>
+  signTransaction?: (txToSign: SignTx<UtxoChainId>) => Promise<string>
+}
+
+export type UtxoTransactionExecutionContext = {
+  config: SwapperConfig
+  swapperMetadata: SwapperMetadata | undefined
 }
 
 export type CosmosSdkTransactionExecutionProps = {
@@ -743,6 +767,8 @@ export type CheckTradeStatusInput = {
 export type TradeStatus = {
   status: TxStatus
   buyTxHash: string | undefined
+  // The funding tx as the provider reports it - an externally paid swap's client may never have seen it
+  sellTxHash?: string | undefined
   // The swapper/protocol's own identifier for the swap (relayer tx hash, native swap id, order uid)
   swapperTxId?: string | undefined
   // Fully-formed link to the swapper/protocol's own tracker page for the swap
@@ -760,6 +786,8 @@ export type TradeRateResult = Result<TradeRate[], SwapErrorRight>
 export type EvmMessageToSign = CowMessageToSign
 
 export type Swapper = {
+  supportsExternalPayment?: boolean
+
   executeEvmTransaction?: (
     txToSign: SignTx<EvmChainId>,
     callbacks: EvmTransactionExecutionProps,
@@ -772,6 +800,7 @@ export type Swapper = {
   executeUtxoTransaction?: (
     txToSign: SignTx<UtxoChainId>,
     callbacks: UtxoTransactionExecutionProps,
+    context?: UtxoTransactionExecutionContext,
   ) => Promise<string>
   executeCosmosSdkTransaction?: (
     txToSign: SignTx<CosmosSdkChainId>,
@@ -813,6 +842,16 @@ export type SwapperApi = {
 
   getTradeQuote: (input: GetTradeQuoteInput, deps: SwapperDeps) => Promise<TradeQuoteResult>
   getTradeRate: (input: GetTradeRateInput, deps: SwapperDeps) => Promise<TradeRateResult>
+
+  // Implemented only where upstream can honour an exact buy amount and derive the sell amount
+  getExactOutputTradeQuote?: (
+    input: GetExactOutputTradeQuoteInput,
+    deps: SwapperDeps,
+  ) => Promise<TradeQuoteResult>
+  getExactOutputTradeRate?: (
+    input: GetExactOutputTradeRateInput,
+    deps: SwapperDeps,
+  ) => Promise<TradeRateResult>
 
   getUnsignedEvmTransaction?: (input: GetUnsignedEvmTransactionArgs) => Promise<SignTx<EvmChainId>>
   getUnsignedEvmMessage?: (input: GetUnsignedEvmMessageArgs) => Promise<EvmMessageToSign>

@@ -103,7 +103,6 @@ export type FeatureFlags = {
   SolanaSwapper: boolean
   ChainflipDca: boolean
   ChainflipLending: boolean
-  NewWalletFlow: boolean
   NewLimitFlow: boolean
   ThorchainSwapperVolatilityAck: boolean
   RelaySwapper: boolean
@@ -125,7 +124,6 @@ export type FeatureFlags = {
   LazyTxHistory: boolean
   LedgerReadOnly: boolean
   QuickBuy: boolean
-  NewWalletManager: boolean
   SwapperFiatRamps: boolean
   WebServices: boolean
   AddressBook: boolean
@@ -135,6 +133,7 @@ export type FeatureFlags = {
   YieldMultiAccount: boolean
   EarnTab: boolean
   MmNativeMultichain: boolean
+  Robinhood: boolean
 }
 
 export type Flag = keyof FeatureFlags
@@ -272,7 +271,6 @@ const initialState: Preferences = {
     ChainflipDca: getConfig().VITE_FEATURE_CHAINFLIP_SWAP_DCA,
     ChainflipLending: getConfig().VITE_FEATURE_CHAINFLIP_LENDING,
     SolanaSwapper: getConfig().VITE_FEATURE_SWAPPER_SOLANA,
-    NewWalletFlow: getConfig().VITE_FEATURE_NEW_WALLET_FLOW,
     NewLimitFlow: getConfig().VITE_FEATURE_NEW_LIMIT_FLOW,
     ThorchainSwapperVolatilityAck: getConfig().VITE_FEATURE_THORCHAIN_SWAPPER_ACK,
     RelaySwapper: getConfig().VITE_FEATURE_SWAPPER_RELAY,
@@ -294,7 +292,6 @@ const initialState: Preferences = {
     LazyTxHistory: getConfig().VITE_FEATURE_TX_HISTORY_BYE_BYE,
     LedgerReadOnly: getConfig().VITE_FEATURE_LEDGER_READ_ONLY,
     QuickBuy: getConfig().VITE_FEATURE_QUICK_BUY,
-    NewWalletManager: getConfig().VITE_FEATURE_NEW_WALLET_MANAGER,
     SwapperFiatRamps: getConfig().VITE_FEATURE_SWAPPER_FIAT_RAMPS,
     WebServices: getConfig().VITE_FEATURE_NOTIFICATIONS_WEBSERVICES,
     AddressBook: getConfig().VITE_FEATURE_ADDRESS_BOOK,
@@ -304,6 +301,7 @@ const initialState: Preferences = {
     YieldMultiAccount: getConfig().VITE_FEATURE_YIELD_MULTI_ACCOUNT,
     EarnTab: getConfig().VITE_FEATURE_EARN_TAB,
     MmNativeMultichain: getConfig().VITE_FEATURE_MM_NATIVE_MULTICHAIN,
+    Robinhood: getConfig().VITE_FEATURE_ROBINHOOD,
   },
   selectedLocale: simpleLocale(),
   hasWalletSeenTcyClaimAlert: {},

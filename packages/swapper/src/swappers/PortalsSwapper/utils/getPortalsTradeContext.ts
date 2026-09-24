@@ -1,5 +1,5 @@
 import type { Asset } from '@shapeshiftoss/types'
-import { bn, bnOrZero } from '@shapeshiftoss/utils'
+import { BigNumber, bn, bnOrZero } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 
@@ -25,30 +25,69 @@ type PortalsTradeContext = {
   tradeCommon: TradeCommon
   stepCommon: Omit<TradeStepCommon, 'feeData'>
   protocolFees: QuoteFeeData['protocolFees']
-  stepDataArgs: { deps: SwapperDeps; sellAsset: Asset; spenderAddress: string; tx: PortalsTx }
+  stepDataArgs: {
+    deps: SwapperDeps
+    sellAsset: Asset
+    sellAmountCryptoBaseUnit: string
+    spenderAddress: string
+    tx: PortalsTx
+  }
 }
 
 export const getPortalsTradeContext = ({
   input,
   deps,
   sellChainId,
-  inputToken,
   orderContext,
+  outputToken,
   tx,
 }: {
   input: PortalsTradeQuoteInput | PortalsTradeRateInput
   deps: SwapperDeps
   sellChainId: PortalsSupportedChainId
-  inputToken: string
   orderContext: PortalsTradeOrderResponse['context']
+  outputToken: string
   tx: PortalsTx
 }): Result<PortalsTradeContext, SwapErrorRight> => {
-  const { sellAsset, buyAsset, affiliateBps, sellAmountIncludingProtocolFeesCryptoBaseUnit } = input
-  const { orderId, outputAmount, minOutputAmount, target, feeAmount, feeToken } = orderContext
+  const { sellAsset, buyAsset, affiliateBps } = input
+  const {
+    orderId,
+    inputAmount,
+    outputAmount,
+    minOutputAmount,
+    target,
+    feeAmount,
+    feeToken,
+    slippageTolerancePercentage,
+  } = orderContext
+
+  // Portals can fill less than we asked for - price against what the transaction actually spends
+  const sellAmountIncludingProtocolFeesCryptoBaseUnit = inputAmount
 
   const isCrossChain = sellAsset.chainId !== buyAsset.chainId
 
-  const buyAmountAfterFeesCryptoBaseUnit = isCrossChain ? minOutputAmount : outputAmount
+  // Portals report the slippage they applied, not the one we requested - bridge routes apply none
+  const appliedSlippageDecimal = bnOrZero(slippageTolerancePercentage).div(100)
+
+  // Unvalidated orders report the post-slippage minimum in both amount fields
+  const hasSlippageBuffer = bnOrZero(outputAmount).gt(minOutputAmount)
+
+  const preSlippageOutputAmount = bnOrZero(minOutputAmount)
+    .div(bn(1).minus(appliedSlippageDecimal))
+    .toFixed(0)
+
+  const buyAmountAfterFeesCryptoBaseUnit = hasSlippageBuffer
+    ? outputAmount
+    : preSlippageOutputAmount
+
+  const bufferSlippageDecimal = hasSlippageBuffer
+    ? bnOrZero(outputAmount).minus(minOutputAmount).div(outputAmount)
+    : appliedSlippageDecimal
+
+  const slippageTolerancePercentageDecimal = BigNumber.max(
+    appliedSlippageDecimal,
+    bufferSlippageDecimal,
+  ).toString()
 
   const rate = getInputOutputRate({
     sellAmountCryptoBaseUnit: sellAmountIncludingProtocolFeesCryptoBaseUnit,
@@ -70,18 +109,16 @@ export const getPortalsTradeContext = ({
     )
   }
 
-  // Portals reports the slippage we requested, not what it applied — recover the actual buffer from the amounts
-  const actualBufferDecimal = bnOrZero(buyAmountAfterFeesCryptoBaseUnit)
-    .minus(minOutputAmount)
-    .div(buyAmountAfterFeesCryptoBaseUnit)
-    .toString()
+  // Portals lower-case echoed tokens, and take their fee in the sell asset on ERC20 sells
+  const isBuyAssetFee = feeToken?.toLowerCase() === outputToken.toLowerCase()
 
-  // Reverse the buffer to recover the expected output (minOutput / (1 - buffer) = output)
-  const buyAmountBeforeFeesCryptoBaseUnit = bnOrZero(minOutputAmount)
-    .div(bn(1).minus(actualBufferDecimal))
-    .toFixed(0)
+  const protocolFeeAsset = isBuyAssetFee ? buyAsset : sellAsset
 
-  const protocolFeeAsset = feeToken === inputToken ? sellAsset : buyAsset
+  // Portals report an output already net of their fee
+  const buyAmountBeforeFeesCryptoBaseUnit =
+    isBuyAssetFee && feeAmount
+      ? bnOrZero(buyAmountAfterFeesCryptoBaseUnit).plus(feeAmount).toFixed(0)
+      : buyAmountAfterFeesCryptoBaseUnit
 
   const protocolFees: QuoteFeeData['protocolFees'] = (() => {
     if (!feeToken || !feeAmount) return
@@ -101,7 +138,7 @@ export const getPortalsTradeContext = ({
       rate,
       swapperName: SwapperName.Portals,
       affiliateBps,
-      slippageTolerancePercentageDecimal: actualBufferDecimal,
+      slippageTolerancePercentageDecimal,
     },
     stepCommon: {
       estimatedExecutionTimeMs: isCrossChain ? 300000 : 0,
@@ -124,6 +161,12 @@ export const getPortalsTradeContext = ({
       }),
     },
     protocolFees,
-    stepDataArgs: { deps, sellAsset, spenderAddress: allowanceContract, tx },
+    stepDataArgs: {
+      deps,
+      sellAsset,
+      sellAmountCryptoBaseUnit: sellAmountIncludingProtocolFeesCryptoBaseUnit,
+      spenderAddress: allowanceContract,
+      tx,
+    },
   })
 }

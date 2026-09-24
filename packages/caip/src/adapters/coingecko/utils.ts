@@ -33,6 +33,8 @@ import {
   dogeChainId,
   ethAssetId,
   ethChainId,
+  etherealAssetId,
+  etherealChainId,
   flowEvmAssetId,
   flowEvmChainId,
   gnosisAssetId,
@@ -67,8 +69,12 @@ import {
   plumeChainId,
   polygonAssetId,
   polygonChainId,
+  robinhoodAssetId,
+  robinhoodChainId,
   scrollAssetId,
   scrollChainId,
+  seiAssetId,
+  seiChainId,
   solanaChainId,
   solAssetId,
   soneiumAssetId,
@@ -622,6 +628,20 @@ export const parseData = (coins: CoingeckoCoin[]): AssetMap => {
         }
       }
 
+      if (Object.keys(platforms).includes(CoingeckoAssetPlatform.Sei)) {
+        try {
+          const assetId = toAssetId({
+            chainNamespace: CHAIN_NAMESPACE.Evm,
+            chainReference: CHAIN_REFERENCE.SeiMainnet,
+            assetNamespace: 'erc20',
+            assetReference: platforms[CoingeckoAssetPlatform.Sei],
+          })
+          prev[seiChainId][assetId] = id
+        } catch {
+          // unable to create assetId, skip token
+        }
+      }
+
       if (Object.keys(platforms).includes(CoingeckoAssetPlatform.Starknet)) {
         try {
           const assetId = toAssetId({
@@ -664,6 +684,20 @@ export const parseData = (coins: CoingeckoCoin[]): AssetMap => {
         }
       }
 
+      if (Object.keys(platforms).includes(CoingeckoAssetPlatform.Robinhood)) {
+        try {
+          const assetId = toAssetId({
+            chainNamespace: CHAIN_NAMESPACE.Evm,
+            chainReference: CHAIN_REFERENCE.RobinhoodMainnet,
+            assetNamespace: 'erc20',
+            assetReference: platforms[CoingeckoAssetPlatform.Robinhood],
+          })
+          prev[robinhoodChainId][assetId] = id
+        } catch {
+          // unable to create assetId, skip token
+        }
+      }
+
       return prev
     },
     {
@@ -685,7 +719,7 @@ export const parseData = (coins: CoingeckoCoin[]): AssetMap => {
       [lineaChainId]: { [lineaAssetId]: 'ethereum' },
       [berachainChainId]: { [berachainAssetId]: 'berachain-bera' },
       [cronosChainId]: { [cronosAssetId]: 'crypto-com-chain' },
-      [katanaChainId]: { [katanaAssetId]: 'katana' },
+      [katanaChainId]: { [katanaAssetId]: 'ethereum' },
       [storyChainId]: { [storyAssetId]: 'story-2' },
       [flowEvmChainId]: { [flowEvmAssetId]: 'flow' },
       [celoChainId]: { [celoAssetId]: 'celo' },
@@ -700,12 +734,15 @@ export const parseData = (coins: CoingeckoCoin[]): AssetMap => {
       [modeChainId]: { [modeAssetId]: 'ethereum' },
       [soneiumChainId]: { [soneiumAssetId]: 'ethereum' },
       [abstractChainId]: { [abstractAssetId]: 'ethereum' },
+      [seiChainId]: { [seiAssetId]: 'sei-network' },
+      [etherealChainId]: { [etherealAssetId]: 'ethena-usde' },
       [solanaChainId]: { [solAssetId]: 'solana' },
       [starknetChainId]: { [starknetAssetId]: 'starknet' },
       [tronChainId]: { [tronAssetId]: 'tron' },
       [suiChainId]: { [suiAssetId]: 'sui' },
       [nearChainId]: { [nearAssetId]: 'near' },
       [tonChainId]: { [tonAssetId]: 'the-open-network' },
+      [robinhoodChainId]: { [robinhoodAssetId]: 'ethereum' },
     },
   )
 

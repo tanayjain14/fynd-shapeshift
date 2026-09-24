@@ -29,17 +29,18 @@ export const getSunioTradeQuote = async (
   })
 
   if (maybeStepData.isErr()) return Err(maybeStepData.unwrapErr())
-  const { networkFeeCryptoBaseUnit, sunioTransactionData } = maybeStepData.unwrap()
+  const { networkFeeCryptoBaseUnit, transactionData, deadline } = maybeStepData.unwrap()
 
   const tradeQuote: TradeQuote = {
     ...tradeCommon,
     quoteOrRate: 'quote' as const,
+    deadline,
     receiveAddress,
     steps: [
       {
         ...stepCommon,
         accountNumber,
-        sunioTransactionData,
+        transactionData,
         feeData: { networkFeeCryptoBaseUnit, protocolFees },
       },
     ],

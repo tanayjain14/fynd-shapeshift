@@ -10,7 +10,7 @@ type FyndServiceConfig = {
 }
 
 export const createFyndService = ({ baseUrl }: FyndServiceConfig): MonadicSwapperAxiosService => {
-  const cache = createCache(5_000, ['/quote', '/info'], {
+  const cache = createCache(5_000, ['/info'], {
     ...axiosConfig,
     baseURL: baseUrl,
   })

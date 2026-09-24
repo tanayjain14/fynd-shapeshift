@@ -14,7 +14,7 @@ import { getInputOutputRate, makeSwapErrorRight } from '../../../utils'
 import { buildAffiliateFee } from '../../../utils/affiliateFee'
 import type { SunioTradeQuoteInput, SunioTradeRateInput } from '../types'
 import { DEFAULT_SLIPPAGE_PERCENTAGE, SUNIO_SMART_ROUTER_CONTRACT } from './constants'
-import { fetchSunioQuote } from './fetchFromSunio'
+import { fetchSunioQuote } from './fetchSunioQuote'
 import type { GetSunioStepDataArgs } from './getSunioStepData'
 import { assertValidTrade } from './helpers'
 import { sunioServiceFactory } from './sunioService'
@@ -124,7 +124,13 @@ export const getSunioTradeContext = async ({
         }),
       },
       protocolFees,
-      stepDataArgs: { deps, sellAsset, route: bestRoute },
+      stepDataArgs: {
+        deps,
+        sellAsset,
+        sellAmountCryptoBaseUnit: sellAmountIncludingProtocolFeesCryptoBaseUnit,
+        buyAmountCryptoBaseUnit,
+        route: bestRoute,
+      },
     })
   } catch (error) {
     return Err(

@@ -1,6 +1,6 @@
 {
   "name": "@shapeshiftoss/swap-widget",
-  "version": "0.6.0",
+  "version": "0.11.1",
   "description": "Embeddable swap widget using ShapeShift API",
   "repository": "https://github.com/shapeshift/web",
   "license": "MIT",
@@ -40,18 +40,20 @@
     "bs58check": "^4.0.0",
     "cashaddrjs": "^0.3.12",
     "p-queue": "^8.0.1",
+    "qrcode-generator": "^1.5.2",
     "react-virtuoso": "^4.7.11",
     "xstate": "5.28.0"
   },
   "peerDependencies": {
-    "@wagmi/core": "^2.0.0",
     "@reown/appkit": "^1.8.17",
     "@reown/appkit-adapter-bitcoin": "^1.8.17",
     "@reown/appkit-adapter-solana": "^1.8.17",
     "@reown/appkit-adapter-wagmi": "^1.8.17",
-    "@solana/wallet-adapter-wallets": "^0.19.32",
+    "@solana/wallet-adapter-phantom": "^0.9.29",
+    "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "^1.98.0",
     "@tanstack/react-query": "^5.69.0",
+    "@wagmi/core": "^2.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
     "viem": "^2.45.0",
@@ -70,7 +72,10 @@
     "@reown/appkit-adapter-wagmi": {
       "optional": true
     },
-    "@solana/wallet-adapter-wallets": {
+    "@solana/wallet-adapter-phantom": {
+      "optional": true
+    },
+    "@solana/wallet-adapter-solflare": {
       "optional": true
     },
     "@solana/web3.js": {
@@ -78,12 +83,12 @@
     }
   },
   "devDependencies": {
-    "@wagmi/core": "^2.0.0",
     "@reown/appkit": "^1.8.17",
     "@reown/appkit-adapter-bitcoin": "^1.8.17",
     "@reown/appkit-adapter-solana": "^1.8.17",
     "@reown/appkit-adapter-wagmi": "^1.8.17",
-    "@solana/wallet-adapter-wallets": "^0.19.32",
+    "@solana/wallet-adapter-phantom": "^0.9.29",
+    "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "1.98.0",
     "@tanstack/react-query": "^5.69.0",
     "@testing-library/jest-dom": "6.9.1",
@@ -92,6 +97,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.2.0",
+    "@wagmi/core": "^2.0.0",
     "jsdom": "28.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

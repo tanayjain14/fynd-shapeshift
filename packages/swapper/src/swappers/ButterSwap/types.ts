@@ -7,30 +7,17 @@ import type {
   GetSolanaTradeRateInput,
   GetTronTradeQuoteInput,
   GetTronTradeRateInput,
-  GetUtxoTradeQuoteInput,
-  GetUtxoTradeRateInput,
 } from '../../types'
 
 export type ButterSwapTradeQuoteInput =
   | GetEvmTradeQuoteInput
-  | GetUtxoTradeQuoteInput
   | GetSolanaTradeQuoteInput
   | GetTronTradeQuoteInput
 
 export type ButterSwapTradeRateInput =
   | GetEvmTradeRateInput
-  | GetUtxoTradeRateInput
   | GetSolanaTradeRateInput
   | GetTronTradeRateInput
-
-export type ButterSwapTransactionMetadata = {
-  to: string
-  data: string
-  value: Hex
-  method?: string
-  args?: { type: string; value: unknown }[]
-  memo?: string
-}
 
 export type ErrorType = {
   errno: number

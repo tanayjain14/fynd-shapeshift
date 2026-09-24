@@ -14,11 +14,19 @@ export const getBobGatewayTradeRate = async (
 ): Promise<Result<TradeRate[], SwapErrorRight>> => {
   const { accountNumber, sellAsset, buyAsset, receiveAddress } = input
 
-  const recipient = receiveAddress ?? dummyAddressForChainId(buyAsset.chainId)
-  const sender =
-    sellAsset.chainId === btcChainId ? undefined : dummyAddressForChainId(sellAsset.chainId)
+  const isBtcSell = sellAsset.chainId === btcChainId
 
-  const maybeContext = await getBobGatewayTradeContext({ input, deps, sender, recipient })
+  const recipient = receiveAddress ?? dummyAddressForChainId(buyAsset.chainId)
+  const sender = isBtcSell ? undefined : dummyAddressForChainId(sellAsset.chainId)
+  const refundAddress = dummyAddressForChainId(sellAsset.chainId)
+
+  const maybeContext = await getBobGatewayTradeContext({
+    input,
+    deps,
+    sender,
+    recipient,
+    refundAddress,
+  })
 
   if (maybeContext.isErr()) return Err(maybeContext.unwrapErr())
   const { tradeCommon, stepCommon, protocolFees, stepDataArgs } = maybeContext.unwrap()

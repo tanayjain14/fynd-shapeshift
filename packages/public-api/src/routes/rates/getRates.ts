@@ -1,11 +1,16 @@
 import { isEvmChainId } from '@shapeshiftoss/chain-adapters'
-import type { GetTradeRateInput } from '@shapeshiftoss/swapper'
+import type { GetExactOutputTradeRateInput, GetTradeRateInput } from '@shapeshiftoss/swapper'
 import { getTradeRates, swappers, TradeQuoteError } from '@shapeshiftoss/swapper'
 import type { Request, Response } from 'express'
 
 import { getAsset } from '../../assets'
-import { ENABLED_SWAPPER_NAMES } from '../../constants'
+import {
+  ENABLED_SWAPPER_NAMES,
+  isExecutableSellChainId,
+  isSwapperExecutableOnSellChain,
+} from '../../constants'
 import { env } from '../../env'
+import { isExternalPaymentSwapper } from '../../lib/externalPayment'
 import { registry } from '../../registry'
 import { getSwapperDeps } from '../../swapperDeps'
 import type { ErrorResponse } from '../../types'
@@ -56,12 +61,21 @@ export const getRates = async (req: Request, res: Response): Promise<void> => {
       sellAssetId,
       buyAssetId,
       sellAmountCryptoBaseUnit,
+      buyAmountCryptoBaseUnit,
       slippageTolerancePercentageDecimal,
     } = queryResult.data
 
     const sellAsset = getAsset(sellAssetId)
     if (!sellAsset) {
       res.status(400).json({ error: `Unknown sell asset: ${sellAssetId}` } satisfies ErrorResponse)
+      return
+    }
+
+    if (!isExecutableSellChainId(sellAsset.chainId)) {
+      res.status(400).json({
+        error: `Unsupported sell chain: ${sellAsset.chainId}`,
+        code: 'UNSUPPORTED_SELL_CHAIN',
+      } satisfies ErrorResponse)
       return
     }
 
@@ -76,7 +90,9 @@ export const getRates = async (req: Request, res: Response): Promise<void> => {
     const rateInput = {
       sellAsset,
       buyAsset,
-      sellAmountIncludingProtocolFeesCryptoBaseUnit: sellAmountCryptoBaseUnit,
+      ...(buyAmountCryptoBaseUnit
+        ? { buyAmountCryptoBaseUnit }
+        : { sellAmountIncludingProtocolFeesCryptoBaseUnit: sellAmountCryptoBaseUnit }),
       affiliateBps: req.affiliateInfo?.affiliateBps ?? env.DEFAULT_AFFILIATE_BPS,
       allowMultiHop: false,
       slippageTolerancePercentageDecimal,
@@ -92,9 +108,10 @@ export const getRates = async (req: Request, res: Response): Promise<void> => {
       try {
         const swapper = swappers[swapperName]
         if (!swapper) return null
+        if (!isSwapperExecutableOnSellChain(swapperName, sellAsset.chainId)) return null
 
         const result = await getTradeRates(
-          rateInput as GetTradeRateInput,
+          rateInput as GetTradeRateInput | GetExactOutputTradeRateInput,
           swapperName,
           deps,
           RATE_TIMEOUT_MS,
@@ -108,10 +125,11 @@ export const getRates = async (req: Request, res: Response): Promise<void> => {
             swapperName,
             rate: '0',
             buyAmountCryptoBaseUnit: '0',
-            sellAmountCryptoBaseUnit,
+            sellAmountCryptoBaseUnit: sellAmountCryptoBaseUnit ?? '0',
             steps: 0,
             allowanceContract: undefined,
             estimatedExecutionTimeMs: undefined,
+            supportsExternalPayment: isExternalPaymentSwapper(swapperName),
             priceImpactPercentageDecimal: undefined,
             partnerBps: req.affiliateInfo?.partnerBps,
             shapeshiftBps: req.affiliateInfo?.shapeshiftBps ?? env.DEFAULT_AFFILIATE_BPS,
@@ -139,6 +157,7 @@ export const getRates = async (req: Request, res: Response): Promise<void> => {
           steps: rate.steps.length,
           allowanceContract: step.allowanceContract,
           estimatedExecutionTimeMs: step.estimatedExecutionTimeMs,
+          supportsExternalPayment: isExternalPaymentSwapper(swapperName),
           priceImpactPercentageDecimal: rate.priceImpactPercentageDecimal,
           partnerBps: req.affiliateInfo?.partnerBps,
           shapeshiftBps: req.affiliateInfo?.shapeshiftBps ?? env.DEFAULT_AFFILIATE_BPS,

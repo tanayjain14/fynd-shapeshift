@@ -187,6 +187,11 @@ export const useSwapExecution = () => {
           return
         }
 
+        if (Date.now() >= quote.expiresAt) {
+          actorRef.send({ type: 'QUOTE_EXPIRED' })
+          return
+        }
+
         const txData = quote.steps[0]?.transactionData
         if (!txData) {
           console.error('Quote missing transactionData in steps[0]', quote)
@@ -209,6 +214,7 @@ export const useSwapExecution = () => {
               return executeSolanaSerializedTx(txData, solana)
             case 'cosmossdk_msg_send':
             case 'cosmossdk_msg_deposit':
+            case 'tron':
               throw new Error('This swap is not yet supported — please try a different route')
             default: {
               const _exhaustive: never = txData

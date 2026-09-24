@@ -1,3 +1,4 @@
+import { CHAIN_NAMESPACE, fromChainId } from '@shapeshiftoss/caip'
 import { SwapperName } from '@shapeshiftoss/swapper'
 import { KnownChainIds } from '@shapeshiftoss/types'
 
@@ -7,6 +8,7 @@ export const SUPPORTED_CHAIN_IDS: readonly KnownChainIds[] = [
   KnownChainIds.AvalancheMainnet,
   KnownChainIds.BaseMainnet,
   KnownChainIds.BnbSmartChainMainnet,
+  KnownChainIds.BobMainnet,
   KnownChainIds.EthereumMainnet,
   KnownChainIds.GnosisMainnet,
   KnownChainIds.HyperEvmMainnet,
@@ -42,11 +44,29 @@ export const SUPPORTED_CHAIN_IDS: readonly KnownChainIds[] = [
 
 export const SUPPORTED_CHAIN_IDS_SET: ReadonlySet<string> = new Set(SUPPORTED_CHAIN_IDS)
 
+// Namespaces extractTransactionData can serialize - a chain outside these is buy-side only
+const EXECUTABLE_CHAIN_NAMESPACES: ReadonlySet<string> = new Set([
+  CHAIN_NAMESPACE.Evm,
+  CHAIN_NAMESPACE.Utxo,
+  CHAIN_NAMESPACE.CosmosSdk,
+  CHAIN_NAMESPACE.Solana,
+  CHAIN_NAMESPACE.Tron,
+])
+
+const EXECUTABLE_SELL_CHAIN_IDS: readonly KnownChainIds[] = SUPPORTED_CHAIN_IDS.filter(chainId =>
+  EXECUTABLE_CHAIN_NAMESPACES.has(fromChainId(chainId).chainNamespace),
+)
+
+const EXECUTABLE_SELL_CHAIN_IDS_SET: ReadonlySet<string> = new Set(EXECUTABLE_SELL_CHAIN_IDS)
+
+export const isExecutableSellChainId = (chainId: string): boolean =>
+  EXECUTABLE_SELL_CHAIN_IDS_SET.has(chainId)
+
 export const ENABLED_SWAPPER_NAMES: readonly SwapperName[] = [
   SwapperName.Bebop,
+  SwapperName.BobGateway,
   SwapperName.ButterSwap,
   SwapperName.Chainflip,
-  SwapperName.CowSwap,
   SwapperName.Mayachain,
   SwapperName.NearIntents,
   SwapperName.Portals,
@@ -54,3 +74,17 @@ export const ENABLED_SWAPPER_NAMES: readonly SwapperName[] = [
   SwapperName.Thorchain,
   SwapperName.Zrx,
 ]
+
+// Bebop settles solana RFQ orders off-chain via its own api - broadcasting the tx never settles it
+const EXCLUDED_SWAPPER_NAMESPACES: Partial<Record<SwapperName, ReadonlySet<string>>> = {
+  [SwapperName.Bebop]: new Set([CHAIN_NAMESPACE.Solana]),
+}
+
+export const isSwapperExecutableOnSellChain = (
+  swapperName: SwapperName,
+  chainId: string,
+): boolean => !EXCLUDED_SWAPPER_NAMESPACES[swapperName]?.has(fromChainId(chainId).chainNamespace)
+
+// Sanity ceiling catching provider deadline bugs (unit inflation, sentinel far-future dates).
+// Widest legitimate deadline today is chainflip's 6h - raise this if a swapper ever quotes longer.
+export const MAX_QUOTE_DEADLINE_MS = 7 * 24 * 60 * 60 * 1000

@@ -1,23 +1,42 @@
 import type { Asset, QuoteResponse, TradeRate } from '../types'
 
-export type ErrorSource = 'QUOTE_ERROR' | 'APPROVAL_ERROR' | 'EXECUTE_ERROR' | 'STATUS_FAILED'
+export type ErrorSource =
+  | 'QUOTE_ERROR'
+  | 'QUOTE_EXPIRED'
+  | 'APPROVAL_ERROR'
+  | 'EXECUTE_ERROR'
+  | 'STATUS_FAILED'
+  | 'TRACKING_TIMEOUT'
 
 export type SwapMachineContext = {
   sellAsset: Asset
   buyAsset: Asset
   sellAmount: string
   sellAmountBaseUnit: string | undefined
+  // Set only in exact-output mode, where it drives quoting and the sell amount comes back derived
+  buyAmount: string
+  buyAmountBaseUnit: string | undefined
   isSellAmountFiat: boolean
   sellAmountFiat: string
   selectedRate: TradeRate | null
   quote: QuoteResponse | null
   txHash: string | null
+  // From the api status response - the widget can't derive the swapper's page itself
+  txLink: string | null
+  buyTxLink: string | null
+  swapperTxLink: string | null
+  // Start of the settlement tracking window
+  depositObservedAt: number | null
   approvalTxHash: string | null
+  // Which of the quote's approval txs is in flight - a reset and an approval look alike otherwise
+  approvalTxIndex: number
   error: string | null
   errorSource: ErrorSource | null
   retryCount: number
   chainType: 'evm' | 'utxo' | 'solana' | 'cosmos' | 'other'
+  isDepositFlow: boolean
   slippage: string
+  // Named for the api field it fills - on a deposit swap it's the typed refund address
   sendAddress: string | undefined
   receiveAddress: string | undefined
   isSellAssetEvm: boolean
@@ -35,19 +54,44 @@ export type SwapMachineEvent =
       amountBaseUnit: string | undefined
       fiatValue: string
     }
+  | { type: 'SET_BUY_AMOUNT'; amount: string; amountBaseUnit: string | undefined }
   | { type: 'SET_SELL_FIAT_MODE'; isFiat: boolean }
   | { type: 'SET_SLIPPAGE'; slippage: string }
   | { type: 'SELECT_RATE'; rate: TradeRate }
-  | { type: 'FETCH_QUOTE' }
+  | { type: 'FETCH_QUOTE'; isDepositFlow?: boolean }
+  | {
+      type: 'DEPOSIT_DETECTED'
+      txHash: string
+      txLink?: string
+      swapperTxLink?: string
+      observedAt: number
+    }
+  | { type: 'DEPOSIT_EXPIRED' }
+  | { type: 'TRACKING_TIMEOUT' }
+  | { type: 'TX_LINKS_UPDATED'; txLink?: string; swapperTxLink?: string }
+  | {
+      type: 'RESTORE_DEPOSIT'
+      quote: QuoteResponse
+      sendAddress: string
+      receiveAddress: string
+      sellAmountBaseUnit: string | undefined
+      buyAmountBaseUnit: string | undefined
+      txHash: string | undefined
+      depositObservedAt: number | undefined
+      txLink?: string
+      swapperTxLink?: string
+    }
   | { type: 'QUOTE_SUCCESS'; quote: QuoteResponse }
   | { type: 'QUOTE_ERROR'; error: string }
   | { type: 'APPROVE' }
+  | { type: 'APPROVAL_TX_STARTED'; index: number }
   | { type: 'APPROVAL_SUCCESS'; txHash: string }
   | { type: 'APPROVAL_ERROR'; error: string }
   | { type: 'EXECUTE_SUCCESS'; txHash: string }
   | { type: 'EXECUTE_ERROR'; error: string }
-  | { type: 'STATUS_CONFIRMED' }
-  | { type: 'STATUS_FAILED'; error: string }
+  | { type: 'QUOTE_EXPIRED' }
+  | { type: 'STATUS_CONFIRMED'; txLink?: string; buyTxLink?: string; swapperTxLink?: string }
+  | { type: 'STATUS_FAILED'; error: string; txLink?: string; swapperTxLink?: string }
   | { type: 'RETRY' }
   | { type: 'RESET' }
   | { type: 'SET_SEND_ADDRESS'; address: string | undefined }

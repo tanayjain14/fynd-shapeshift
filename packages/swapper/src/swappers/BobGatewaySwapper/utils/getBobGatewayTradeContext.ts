@@ -1,4 +1,3 @@
-import { isEvmChainId } from '@shapeshiftoss/chain-adapters'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 import { v4 as uuid } from 'uuid'
@@ -33,11 +32,13 @@ export const getBobGatewayTradeContext = async ({
   deps,
   sender,
   recipient,
+  refundAddress,
 }: {
   input: BobGatewayTradeQuoteInput | BobGatewayTradeRateInput
   deps: SwapperDeps
   sender: string | undefined
   recipient: string
+  refundAddress: string | undefined
 }): Promise<Result<BobGatewayTradeContext, SwapErrorRight>> => {
   const {
     sellAsset,
@@ -60,6 +61,7 @@ export const getBobGatewayTradeContext = async ({
     buyChainName,
     sender,
     recipient,
+    refundAddress,
     amount: sellAmountIncludingProtocolFeesCryptoBaseUnit,
     affiliateBps,
     slippageTolerancePercentageDecimal,
@@ -108,7 +110,7 @@ export const getBobGatewayTradeContext = async ({
       quote,
       sellAmountCryptoBaseUnit: sellAmountIncludingProtocolFeesCryptoBaseUnit,
       sellAsset,
-      spenderAddress: isEvmChainId(sellAsset.chainId) ? allowanceContract : '',
+      spenderAddress: allowanceContract,
       deps,
     },
   })
