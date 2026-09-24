@@ -1,18 +1,7 @@
-import type { AxiosRequestConfig } from 'axios'
+import axios from 'axios'
 
 import type { MonadicSwapperAxiosService } from '../../../types'
-import { createCache, makeSwapperAxiosServiceMonadic } from '../../../utils'
+import { makeSwapperAxiosServiceMonadic } from '../../../utils'
 
-const axiosConfig: AxiosRequestConfig = { timeout: 10_000 }
-
-type FyndServiceConfig = {
-  baseUrl: string
-}
-
-export const createFyndService = ({ baseUrl }: FyndServiceConfig): MonadicSwapperAxiosService => {
-  const cache = createCache(5_000, ['/info'], {
-    ...axiosConfig,
-    baseURL: baseUrl,
-  })
-  return makeSwapperAxiosServiceMonadic(cache)
-}
+export const createFyndService = ({ baseUrl }: { baseUrl: string }): MonadicSwapperAxiosService =>
+  makeSwapperAxiosServiceMonadic(axios.create({ baseURL: baseUrl, timeout: 10_000 }))

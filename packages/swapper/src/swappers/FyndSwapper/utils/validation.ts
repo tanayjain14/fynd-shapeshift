@@ -1,13 +1,11 @@
-import { fromChainId } from '@shapeshiftoss/caip'
-import { bn } from '@shapeshiftoss/utils'
+import { BigNumber, bn } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
-import { isAddress } from 'viem'
 
 import type { SwapErrorRight } from '../../../types'
 import { TradeQuoteError } from '../../../types'
 import { makeSwapErrorRight } from '../../../utils'
-import type { FyndEncodedQuote, FyndFeeBreakdown, FyndInfoResponse } from '../types'
+import type { FyndEncodedQuote, FyndFeeBreakdown } from '../types'
 import type { FyndSupportedChainId } from './constants'
 import { FYND_CHAINS } from './constants'
 
@@ -28,32 +26,18 @@ const isValidFeeBreakdown = (value: unknown): value is FyndFeeBreakdown =>
   isFyndAmount(value.max_slippage) &&
   isFyndAmount(value.min_amount_received)
 
-export const validateFyndInfoResponse = (
-  value: unknown,
-  chainId: FyndSupportedChainId,
-): Result<FyndInfoResponse, SwapErrorRight> => {
-  if (
-    !isRecord(value) ||
-    value.chain_id !== Number(fromChainId(chainId).chainReference) ||
-    typeof value.router_address !== 'string' ||
-    !isAddress(value.router_address) ||
-    value.router_address.toLowerCase() !== FYND_CHAINS[chainId].routerAddress
-  ) {
-    return Err(invalidResponse('Fynd returned unexpected chain or router information'))
-  }
-  return Ok(value as FyndInfoResponse)
-}
-
 export const validateFyndQuoteResponse = (
   value: unknown,
   {
     chainId,
     sellAmountCryptoBaseUnit,
     isNativeSell,
+    slippageTolerancePercentageDecimal,
   }: {
     chainId: FyndSupportedChainId
     sellAmountCryptoBaseUnit: string
     isNativeSell: boolean
+    slippageTolerancePercentageDecimal: string
   },
 ): Result<FyndEncodedQuote, SwapErrorRight> => {
   if (!isRecord(value) || !Array.isArray(value.orders) || value.orders.length !== 1) {
@@ -112,6 +96,18 @@ export const validateFyndQuoteResponse = (
         )))
   ) {
     return Err(invalidResponse('Fynd returned an invalid encoded quote'))
+  }
+  // Fynd quantizes slippage to six decimals, then floors the deduction from net output.
+  const netAmount = bn(quote.amount_out).minus(fees.router_fee).minus(fees.client_fee)
+  const slippageMillionths = bn(slippageTolerancePercentageDecimal)
+    .times(1_000_000)
+    .integerValue(BigNumber.ROUND_DOWN)
+  const maxSlippage = netAmount
+    .times(slippageMillionths)
+    .div(1_000_000)
+    .integerValue(BigNumber.ROUND_DOWN)
+  if (bn(fees.max_slippage).gt(maxSlippage)) {
+    return Err(invalidResponse('Fynd slippage exceeds the requested tolerance'))
   }
   return Ok(quote as FyndEncodedQuote)
 }

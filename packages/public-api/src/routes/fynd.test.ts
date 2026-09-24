@@ -2,18 +2,12 @@ import type { Request, Response } from 'express'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { env } from '../env'
-import { getFyndInfo, getFyndQuote } from './fynd'
+import { getFyndQuote } from './fynd'
 
 vi.mock('../env', () => ({ env: { FYND_API_KEY: 'test-server-key' } }))
 vi.mock('@shapeshiftoss/swapper', () => ({
   FYND_CHAINS: {
     'eip155:1': { name: 'ethereum' },
-    'eip155:8453': { name: 'base' },
-    'eip155:42161': { name: 'arbitrum' },
-    'eip155:56': { name: 'bsc' },
-    'eip155:137': { name: 'polygon' },
-    'eip155:130': { name: 'unichain' },
-    'eip155:4663': { name: 'robinhood' },
   },
 }))
 
@@ -56,33 +50,21 @@ describe('Fynd proxy', () => {
     vi.useRealTimers()
   })
 
-  it.each(['ethereum', 'base', 'arbitrum', 'bsc', 'polygon', 'unichain', 'robinhood'])(
-    'fetches info for %s with server credentials',
-    async chain => {
-      fetchMock.mockResolvedValue(new globalThis.Response(JSON.stringify({ chain_id: 1 })))
-      const res = response()
-      await getFyndInfo(request(chain), res)
-      expect(fetchMock).toHaveBeenCalledWith(
-        `https://fynd-api.propellerheads.xyz/v1/${chain}/info`,
-        expect.objectContaining({
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json', Authorization: 'test-server-key' },
-          redirect: 'error',
-        }),
-      )
-      expect(res.json).toHaveBeenCalledWith({ chain_id: 1 })
-    },
-  )
-
   it('posts one validated order including native transfer_from encoding', async () => {
     fetchMock.mockResolvedValue(new globalThis.Response(JSON.stringify({ orders: [] })))
     const res = response()
     await getFyndQuote(request(), res)
     expect(fetchMock).toHaveBeenCalledWith(
       'https://fynd-api.propellerheads.xyz/v1/ethereum/quote',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify(body) }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', Authorization: 'test-server-key' },
+        redirect: 'error',
+      }),
     )
     expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({ orders: [] })
   })
 
   it('does not call upstream without credentials', async () => {
@@ -95,7 +77,7 @@ describe('Fynd proxy', () => {
 
   it('rejects arbitrary upstream paths', async () => {
     const res = response()
-    await getFyndInfo(request('../admin'), res)
+    await getFyndQuote(request('../admin'), res)
     expect(res.status).toHaveBeenCalledWith(400)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -128,17 +110,19 @@ describe('Fynd proxy', () => {
   })
 
   it('preserves rate limits without leaking upstream bodies or other headers', async () => {
-    fetchMock.mockResolvedValue(
-      new globalThis.Response('secret test-server-key', {
-        status: 429,
-        headers: { 'Retry-After': '30', Authorization: 'test-server-key' },
-      }),
-    )
+    const upstream = new globalThis.Response('secret test-server-key', {
+      status: 429,
+      headers: { 'Retry-After': '30', Authorization: 'test-server-key' },
+    })
+    if (!upstream.body) throw new Error('Expected upstream response body')
+    const cancel = vi.spyOn(upstream.body, 'cancel')
+    fetchMock.mockResolvedValue(upstream)
     const res = response()
     await getFyndQuote(request(), res)
     expect(res.status).toHaveBeenCalledWith(429)
     expect(res.setHeader).toHaveBeenCalledExactlyOnceWith('Retry-After', '30')
     expect(res.json).toHaveBeenCalledWith({ error: 'Fynd request failed' })
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it('does not expose connection error details', async () => {

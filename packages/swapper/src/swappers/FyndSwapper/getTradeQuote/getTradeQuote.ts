@@ -48,11 +48,10 @@ export const getTradeQuote = async (
     baseUrl: deps.config.VITE_FYND_BASE_URL,
   })
   if (maybeFynd.isErr()) return Err(maybeFynd.unwrapErr())
-  const { quote, routerAddress } = maybeFynd.unwrap()
+  const quote = maybeFynd.unwrap()
   const maybeContext = getFyndTradeContext({
     input,
     quote,
-    routerAddress,
     slippageTolerancePercentageDecimal,
   })
   if (maybeContext.isErr()) return Err(maybeContext.unwrapErr())

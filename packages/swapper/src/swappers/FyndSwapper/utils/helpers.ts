@@ -1,7 +1,7 @@
 import type { AssetId, ChainId } from '@shapeshiftoss/caip'
 import { fromAssetId } from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
-import { bn, chainIdToFeeAssetId } from '@shapeshiftoss/utils'
+import { chainIdToFeeAssetId } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
 import { Err, Ok } from '@sniptt/monads'
 import type { Address } from 'viem'
@@ -16,14 +16,12 @@ import { FYND_SUPPORTED_CHAIN_IDS } from './constants'
 export const isFyndSupportedChainId = (chainId: ChainId): chainId is FyndSupportedChainId =>
   FYND_SUPPORTED_CHAIN_IDS.includes(chainId as FyndSupportedChainId)
 
-export type FyndAmounts = {
-  buyAmountBeforeFeesCryptoBaseUnit: string
-  buyAmountAfterFeesCryptoBaseUnit: string
-}
+export const isFyndNativeAsset = (assetId: AssetId): boolean =>
+  assetId === chainIdToFeeAssetId(assetId.split('/')[0])
 
 export const convertAssetIdToFyndToken = (assetId: AssetId): Address => {
-  const { assetNamespace, assetReference } = fromAssetId(assetId)
-  if (assetNamespace === 'slip44') return zeroAddress
+  const { assetReference } = fromAssetId(assetId)
+  if (isFyndNativeAsset(assetId)) return zeroAddress
   return getAddress(assetReference)
 }
 
@@ -60,7 +58,7 @@ export const assertValidTrade = ({
     return (
       assetParts.length === 2 &&
       assetChainId === asset.chainId &&
-      (asset.assetId === chainIdToFeeAssetId(asset.chainId) ||
+      (isFyndNativeAsset(asset.assetId) ||
         (assetReference?.startsWith('erc20:') &&
           isAddress(assetReference.slice(6)) &&
           assetReference.slice(6).toLowerCase() !== zeroAddress))
@@ -76,19 +74,3 @@ export const assertValidTrade = ({
   }
   return Ok<FyndSupportedChainId, SwapErrorRight>(sellAsset.chainId)
 }
-
-export const calculateFyndAmounts = ({
-  amountOut,
-  routerFee,
-  clientFee = '0',
-}: {
-  amountOut: string
-  routerFee: string
-  clientFee?: string
-}): FyndAmounts => ({
-  buyAmountBeforeFeesCryptoBaseUnit: amountOut,
-  buyAmountAfterFeesCryptoBaseUnit: bn(amountOut).minus(routerFee).minus(clientFee).toFixed(),
-})
-
-export const isNativeFyndSell = (assetId: AssetId): boolean =>
-  convertAssetIdToFyndToken(assetId) === zeroAddress

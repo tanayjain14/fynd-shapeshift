@@ -26,7 +26,7 @@ import {
 import { getAssetById, getAssetCount, getAssets } from './routes/assets'
 import { siweNonce, siweVerify } from './routes/auth'
 import { getChainCount, getChains } from './routes/chains'
-import { getFyndInfo, getFyndQuote } from './routes/fynd'
+import { getFyndQuote } from './routes/fynd'
 import { getPartner } from './routes/partner'
 import { getQuote } from './routes/quote'
 import { getRates } from './routes/rates'
@@ -53,7 +53,6 @@ const startServer = async () => {
 
   const v1Router = express.Router()
 
-  v1Router.get('/fynd/:chain/info', dataLimiter, getFyndInfo)
   v1Router.post('/fynd/:chain/quote', swapQuoteLimiter, getFyndQuote)
 
   v1Router.get('/swap/rates', swapRatesLimiter, resolvePartnerCode, getRates)

@@ -13,7 +13,7 @@ import type {
 import { SwapperName } from '../../../types'
 import { getInputOutputRate } from '../../../utils'
 import type { FyndEncodedQuote, FyndTradeQuoteInput, FyndTradeRateInput } from '../types'
-import { calculateFyndAmounts, isNativeFyndSell } from './helpers'
+import { isFyndNativeAsset } from './helpers'
 
 type FyndTradeContext = {
   tradeCommon: TradeCommon
@@ -24,23 +24,16 @@ type FyndTradeContext = {
 export const getFyndTradeContext = ({
   input,
   quote,
-  routerAddress,
   slippageTolerancePercentageDecimal,
 }: {
   input: FyndTradeQuoteInput | FyndTradeRateInput
   quote: FyndEncodedQuote
-  routerAddress: string
   slippageTolerancePercentageDecimal: string
 }): Result<FyndTradeContext, SwapErrorRight> => {
   const { sellAsset, buyAsset, sellAmountIncludingProtocolFeesCryptoBaseUnit } = input
   const routerFee = quote.fee_breakdown.router_fee
-  const clientFee = quote.fee_breakdown.client_fee
-  const { buyAmountBeforeFeesCryptoBaseUnit, buyAmountAfterFeesCryptoBaseUnit } =
-    calculateFyndAmounts({
-      amountOut: quote.amount_out,
-      routerFee,
-      clientFee,
-    })
+  const buyAmountBeforeFeesCryptoBaseUnit = quote.amount_out
+  const buyAmountAfterFeesCryptoBaseUnit = bn(quote.amount_out).minus(routerFee).toFixed()
   const rate = getInputOutputRate({
     sellAmountCryptoBaseUnit: quote.amount_in,
     buyAmountCryptoBaseUnit: buyAmountAfterFeesCryptoBaseUnit,
@@ -73,7 +66,7 @@ export const getFyndTradeContext = ({
     },
     stepCommon: {
       estimatedExecutionTimeMs: 0,
-      allowanceContract: isNativeFyndSell(sellAsset.assetId) ? '' : routerAddress,
+      allowanceContract: isFyndNativeAsset(sellAsset.assetId) ? '' : quote.transaction.to,
       rate,
       sellAsset,
       buyAsset,

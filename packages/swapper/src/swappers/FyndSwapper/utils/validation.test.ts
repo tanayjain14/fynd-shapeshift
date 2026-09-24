@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { TradeQuoteError } from '../../../types'
 import { FYND_CHAINS } from './constants'
-import { validateFyndInfoResponse, validateFyndQuoteResponse } from './validation'
+import { validateFyndQuoteResponse } from './validation'
 
 const router = FYND_CHAINS['eip155:1'].routerAddress
 const transaction = {
@@ -15,8 +15,8 @@ const transaction = {
 const fees = {
   router_fee: '10',
   client_fee: '0',
-  max_slippage: '5',
-  min_amount_received: '985',
+  max_slippage: '4',
+  min_amount_received: '986',
   swaps_hash: null,
 }
 const order = {
@@ -35,6 +35,7 @@ const context: Parameters<typeof validateFyndQuoteResponse>[1] = {
   chainId: KnownChainIds.EthereumMainnet,
   sellAmountCryptoBaseUnit: '1000',
   isNativeSell: false,
+  slippageTolerancePercentageDecimal: '0.005',
 }
 const validate = (overrides: Record<string, unknown>) =>
   validateFyndQuoteResponse({ orders: [{ ...order, ...overrides }] }, context)
@@ -90,13 +91,42 @@ describe('Fynd response validation', () => {
   })
 
   it.each([
-    { chain_id: 8453, router_address: router },
-    {
-      chain_id: 1,
-      router_address: '0x1111111111111111111111111111111111111111',
+    ['weaker output floor', '0.005', '1000', '10', '5', '985', false],
+    ['stricter output floor', '0.005', '1000', '10', '3', '987', true],
+    ['zero tolerance', '0', '1000', '10', '0', '990', true],
+    ['loss at zero tolerance', '0', '1000', '10', '1', '989', false],
+    ['six-decimal quantization', '0.0000019', '2000000', '0', '2', '1999998', true],
+    ['loss beyond quantized tolerance', '0.0000019', '2000000', '0', '3', '1999997', false],
+    [
+      'large integer amounts',
+      '0.005',
+      '1000000000000000001',
+      '1',
+      '5000000000000000',
+      '995000000000000000',
+      true,
+    ],
+  ] as const)(
+    'enforces requested slippage: %s',
+    (_label, slippage, amountOut, routerFee, maxSlippage, minOutput, accepted) => {
+      const result = validateFyndQuoteResponse(
+        {
+          orders: [
+            {
+              ...order,
+              amount_out: amountOut,
+              fee_breakdown: {
+                ...fees,
+                router_fee: routerFee,
+                max_slippage: maxSlippage,
+                min_amount_received: minOutput,
+              },
+            },
+          ],
+        },
+        { ...context, slippageTolerancePercentageDecimal: slippage },
+      )
+      expect(result.isOk()).toBe(accepted)
     },
-    { chain_id: 1, router_address: null },
-  ])('rejects info from another chain or router', info => {
-    expect(validateFyndInfoResponse(info, KnownChainIds.EthereumMainnet).isErr()).toBe(true)
-  })
+  )
 })

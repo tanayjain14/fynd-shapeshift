@@ -14,13 +14,11 @@ import type { FyndTradeQuoteInput } from './types'
 import { FYND_CHAINS, FYND_RATE_ADDRESS } from './utils/constants'
 
 const http = vi.hoisted(() => ({
-  get: vi.fn(),
   post: vi.fn(),
   create: vi.fn(),
 }))
 vi.mock('./utils/fyndService', () => ({
   createFyndService: http.create.mockReturnValue({
-    get: http.get,
     post: http.post,
   }),
 }))
@@ -51,7 +49,7 @@ const input: FyndTradeQuoteInput = {
   slippageTolerancePercentageDecimal: '0.005',
 }
 
-const response = (router: `0x${string}`) => ({
+const response = (router: `0x${string}`, priceImpact: number | null = -10) => ({
   orders: [
     {
       order_id: 'test-order',
@@ -61,7 +59,7 @@ const response = (router: `0x${string}`) => ({
       amount_out_net_gas: '990000',
       gas_estimate: '100000',
       gas_price: null,
-      price_impact_bps: -10,
+      price_impact_bps: priceImpact,
       route: { swaps: [{ protocol: 'uniswap_v3' }] },
       transaction: {
         to: router,
@@ -72,8 +70,8 @@ const response = (router: `0x${string}`) => ({
       fee_breakdown: {
         router_fee: '10',
         client_fee: '0',
-        max_slippage: '5000',
-        min_amount_received: '994990',
+        max_slippage: '4999',
+        min_amount_received: '994991',
         swaps_hash: null,
       },
     },
@@ -93,16 +91,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
   payload = response(FYND_CHAINS['eip155:1'].routerAddress)
-  http.get.mockResolvedValue(
-    Ok({
-      data: {
-        chain_id: 1,
-        router_address: FYND_CHAINS['eip155:1'].routerAddress,
-        permit2_address: null,
-        version: 'test',
-      },
-    }),
-  )
   http.post.mockImplementation(() => Promise.resolve(Ok({ data: payload })))
   vi.mocked(getEvmNetworkFeeCryptoBaseUnit).mockImplementation(args => {
     if ('transactionData' in args) args.transactionData.gasLimit = '120000'
@@ -124,16 +112,6 @@ describe('Fynd trades', () => {
   ] as const)('quotes supported chain %s', async (chainId, slug) => {
     const chain = FYND_CHAINS[chainId]
     payload = response(chain.routerAddress)
-    http.get.mockResolvedValue(
-      Ok({
-        data: {
-          chain_id: Number(chainId.split(':')[1]),
-          router_address: chain.routerAddress,
-          permit2_address: null,
-          version: 'test',
-        },
-      }),
-    )
     const result = await getTradeQuote(
       {
         ...input,
@@ -153,11 +131,11 @@ describe('Fynd trades', () => {
       type: 'evm',
       chainId: Number(chainId.split(':')[1]),
       to: chain.routerAddress,
+      data: payload.orders[0].transaction.data,
       gasLimit: '120000',
       value: '0',
     })
     expect(quote.steps[0].buyAmountAfterFeesCryptoBaseUnit).toBe('999990')
-    expect(quote.priceImpactPercentageDecimal).toBe('-0.001')
     expect(getEvmNetworkFeeCryptoBaseUnit).toHaveBeenCalledWith(
       expect.objectContaining({
         from: sender,
@@ -167,6 +145,16 @@ describe('Fynd trades', () => {
         }),
       }),
     )
+  })
+
+  it.each<[number | null, string | undefined]>([
+    [10, '0.001'],
+    [-10, '-0.001'],
+    [null, undefined],
+  ])('preserves the direction of price impact %s', async (impact, expected) => {
+    payload = response(FYND_CHAINS[KnownChainIds.EthereumMainnet].routerAddress, impact)
+    const result = await getTradeQuote(input, deps)
+    expect(result.unwrap()[0].priceImpactPercentageDecimal).toBe(expected)
   })
 
   it('preserves connected rate accounts without exposing an executable transaction', async () => {
@@ -190,6 +178,23 @@ describe('Fynd trades', () => {
     )
   })
 
+  it.each([
+    ['zero fees', '99999', '0', '99999'],
+    ['large integer amounts', '1000000000000000001', '1', '1000000000000000000'],
+  ])('preserves exact net output with %s', async (_label, amountOut, routerFee, netOutput) => {
+    payload.orders[0].amount_out = amountOut
+    payload.orders[0].fee_breakdown = {
+      ...payload.orders[0].fee_breakdown,
+      router_fee: routerFee,
+      max_slippage: '0',
+      min_amount_received: netOutput,
+    }
+    const result = await getTradeQuote(input, deps)
+    const step = result.unwrap()[0].steps[0]
+    expect(step.buyAmountBeforeFeesCryptoBaseUnit).toBe(amountOut)
+    expect(step.buyAmountAfterFeesCryptoBaseUnit).toBe(netOutput)
+  })
+
   it('quotes rates without a wallet and keeps the account absent', async () => {
     const result = await getTradeRate(
       {
@@ -205,6 +210,15 @@ describe('Fynd trades', () => {
     expect(result.isOk()).toBe(true)
     expect(result.unwrap()[0].steps[0].accountNumber).toBeUndefined()
     expect(result.unwrap()[0].steps[0]).not.toHaveProperty('transactionData')
+    expect(result.unwrap()[0].receiveAddress).toBeUndefined()
+    expect(http.post).toHaveBeenCalledWith(
+      '/quote',
+      expect.objectContaining({
+        orders: [
+          expect.objectContaining({ sender: FYND_RATE_ADDRESS, receiver: FYND_RATE_ADDRESS }),
+        ],
+      }),
+    )
   })
 
   it('does not extend quote freshness by provider latency', async () => {
@@ -222,6 +236,12 @@ describe('Fynd trades', () => {
     const result = await getTradeQuote({ ...input, sellAsset: ETH }, deps)
     expect(result.isOk()).toBe(true)
     expect(result.unwrap()[0].steps[0].allowanceContract).toBe('')
+    expect(result.unwrap()[0].steps[0].transactionData).toMatchObject({
+      value: input.sellAmountIncludingProtocolFeesCryptoBaseUnit,
+    })
+    expect(getEvmNetworkFeeCryptoBaseUnit).toHaveBeenCalledWith(
+      expect.objectContaining({ stateOverride: expect.objectContaining({ spenderAddress: '' }) }),
+    )
     expect(http.post).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -240,7 +260,7 @@ describe('Fynd trades', () => {
       vi.spyOn(Date, 'now').mockReturnValue(start + FALLBACK_QUOTE_DEADLINE_MS)
       return Promise.resolve(Ok({ data: payload }))
     })
-    expect((await getTradeQuote(input, deps)).isErr()).toBe(true)
+    expect((await getTradeQuote(input, deps)).unwrapErr().code).toBe(TradeQuoteError.Timeout)
   })
 
   it('falls back to the provider gas price for display-only rates', async () => {
@@ -287,11 +307,14 @@ describe('Fynd trades', () => {
 
   it('returns a quote error if gas estimation fails', async () => {
     vi.mocked(getEvmNetworkFeeCryptoBaseUnit).mockRejectedValue(new Error('estimation failed'))
-    expect((await getTradeQuote(input, deps)).isErr()).toBe(true)
+    expect((await getTradeQuote(input, deps)).unwrapErr().code).toBe(
+      TradeQuoteError.NetworkFeeEstimationFailed,
+    )
   })
 
   it.each([
     `${WETH.assetId}/unexpected`,
+    'eip155:1/notanasset:abc',
     'eip155:1/erc20:0x0000000000000000000000000000000000000000',
     'eip155:1/slip44:999',
   ])('rejects malformed or misidentified assets before requesting a quote: %s', async assetId => {

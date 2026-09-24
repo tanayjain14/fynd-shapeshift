@@ -2,7 +2,7 @@ import type { ChainId } from '@shapeshiftoss/caip'
 import type { Asset } from '@shapeshiftoss/types'
 import { bn } from '@shapeshiftoss/utils'
 import type { Result } from '@sniptt/monads'
-import { Err, Ok } from '@sniptt/monads'
+import { Err } from '@sniptt/monads'
 import { isAddress, zeroAddress } from 'viem'
 
 import type { SwapErrorRight } from '../../../types'
@@ -11,8 +11,8 @@ import { makeSwapErrorRight } from '../../../utils'
 import type { FyndEncodedQuote } from '../types'
 import { FYND_CHAINS } from './constants'
 import { createFyndService } from './fyndService'
-import { assertValidTrade, convertAssetIdToFyndToken, isNativeFyndSell } from './helpers'
-import { isFyndAmount, validateFyndInfoResponse, validateFyndQuoteResponse } from './validation'
+import { assertValidTrade, convertAssetIdToFyndToken, isFyndNativeAsset } from './helpers'
+import { isFyndAmount, validateFyndQuoteResponse } from './validation'
 
 type FetchFyndInput = {
   sellAsset: Asset
@@ -34,9 +34,7 @@ export const fetchFromFynd = async ({
   receiver,
   slippageTolerancePercentageDecimal,
   baseUrl,
-}: FetchFyndInput): Promise<
-  Result<{ quote: FyndEncodedQuote; routerAddress: string }, SwapErrorRight>
-> => {
+}: FetchFyndInput): Promise<Result<FyndEncodedQuote, SwapErrorRight>> => {
   const maybeTrade = assertValidTrade({ sellAsset, buyAsset, chainId: requestedChainId })
   if (maybeTrade.isErr()) return Err(maybeTrade.unwrapErr())
   const chainId = maybeTrade.unwrap()
@@ -52,19 +50,13 @@ export const fetchFromFynd = async ({
     return Err(
       makeSwapErrorRight({
         message: 'Invalid Fynd amount, address or slippage',
-        code: TradeQuoteError.InvalidResponse,
+        code: TradeQuoteError.InternalError,
       }),
     )
   }
   const service = createFyndService({
     baseUrl: `${baseUrl.replace(/\/$/, '')}/${FYND_CHAINS[chainId].name}`,
   })
-  const maybeInfo = await service.get<unknown>('/info')
-  if (maybeInfo.isErr()) return Err(maybeInfo.unwrapErr())
-  const maybeValidInfo = validateFyndInfoResponse(maybeInfo.unwrap().data, chainId)
-  if (maybeValidInfo.isErr()) return Err(maybeValidInfo.unwrapErr())
-  const { router_address: routerAddress } = maybeValidInfo.unwrap()
-
   const maybeResponse = await service.post<unknown>('/quote', {
     orders: [
       {
@@ -87,11 +79,10 @@ export const fetchFromFynd = async ({
     },
   })
   if (maybeResponse.isErr()) return Err(maybeResponse.unwrapErr())
-  const maybeQuote = validateFyndQuoteResponse(maybeResponse.unwrap().data, {
+  return validateFyndQuoteResponse(maybeResponse.unwrap().data, {
     chainId,
     sellAmountCryptoBaseUnit,
-    isNativeSell: isNativeFyndSell(sellAsset.assetId),
+    isNativeSell: isFyndNativeAsset(sellAsset.assetId),
+    slippageTolerancePercentageDecimal,
   })
-  if (maybeQuote.isErr()) return Err(maybeQuote.unwrapErr())
-  return Ok({ quote: maybeQuote.unwrap(), routerAddress })
 }

@@ -34,11 +34,7 @@ const quoteSchema = z
   })
   .strict()
 
-const forwardFynd = async (
-  req: Request,
-  res: Response,
-  endpoint: 'info' | 'quote',
-): Promise<void> => {
+export const getFyndQuote = async (req: Request, res: Response): Promise<void> => {
   if (!Object.values(FYND_CHAINS).some(chain => chain.name === req.params.chain)) {
     res.status(400).json({ error: 'Unsupported Fynd chain' })
     return
@@ -48,8 +44,8 @@ const forwardFynd = async (
     return
   }
 
-  const parsed = endpoint === 'quote' ? quoteSchema.safeParse(req.body) : undefined
-  if (parsed && !parsed.success) {
+  const parsed = quoteSchema.safeParse(req.body)
+  if (!parsed.success) {
     res.status(400).json({ error: 'Invalid Fynd quote request' })
     return
   }
@@ -57,15 +53,16 @@ const forwardFynd = async (
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10_000)
   try {
-    const response = await fetch(`${FYND_URL}/${req.params.chain}/${endpoint}`, {
-      method: endpoint === 'info' ? 'GET' : 'POST',
+    const response = await fetch(`${FYND_URL}/${req.params.chain}/quote`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: env.FYND_API_KEY },
-      ...(parsed?.success && { body: JSON.stringify(parsed.data) }),
+      body: JSON.stringify(parsed.data),
       signal: controller.signal,
       redirect: 'error',
     })
     if (!response.ok) {
       const retryAfter = response.headers.get('retry-after')
+      await response.body?.cancel()
       if (retryAfter) res.setHeader('Retry-After', retryAfter)
       res.status(response.status).json({ error: 'Fynd request failed' })
       return
@@ -80,9 +77,3 @@ const forwardFynd = async (
     clearTimeout(timeout)
   }
 }
-
-export const getFyndInfo = (req: Request, res: Response): Promise<void> =>
-  forwardFynd(req, res, 'info')
-
-export const getFyndQuote = (req: Request, res: Response): Promise<void> =>
-  forwardFynd(req, res, 'quote')

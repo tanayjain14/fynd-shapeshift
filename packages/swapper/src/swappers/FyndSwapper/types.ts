@@ -29,8 +29,3 @@ export type FyndEncodedQuote = {
   transaction: FyndTransaction
   fee_breakdown: FyndFeeBreakdown
 }
-
-export type FyndInfoResponse = {
-  chain_id: number
-  router_address: Address
-}
